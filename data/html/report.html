@@ -4,7 +4,7 @@
     {% include "sections/errors.html" %}
     {% if results.info.category == "file" %}
         {% include "sections/file.html" %}
-    {% elif results.info.category == "url" %}
+    {% elif results.info.category == "url" or results.info.category == "url_list" %}
         {% include "sections/url.html" %}
     {% endif %}
     {% include "sections/signatures.html" %}

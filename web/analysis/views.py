@@ -30,7 +30,7 @@ fs = GridFS(results_db)
 def index(request):
     db = Database()
     tasks_files = db.list_tasks(limit=50, category="file", not_status=TASK_PENDING)
-    tasks_urls = db.list_tasks(limit=50, category="url", not_status=TASK_PENDING)
+    tasks_urls = db.list_tasks(limit=50, category="url", not_status=TASK_PENDING) + db.list_tasks(limit=50, category="url_list", not_status=TASK_PENDING)
 
     analyses_files = []
     analyses_urls = []

@@ -99,7 +99,7 @@ img.fade:hover {
                         <li><a href="#info">Info</a></li>
                         {% if results.info.category == "file" %}
                         <li><a href="#file">File</a></li>
-                        {% elif results.info.category == "url" %}
+                        {% elif results.info.category == "url" or results.info.category == "url_list" %}
                         <li><a href="#url">URL</a></li>
                         {% endif %}
                         <li><a href="#signatures">Signatures</a></li>

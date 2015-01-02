@@ -33,7 +33,7 @@
                             <span class="mono">
                                 {% if row.category == "file" %}
                                     {{row.md5}}
-                                {% elif row.category == "url" %}
+                                {% elif row.category == "url" or row.category == "url_list" %}
                                     {{row.target}}
                                 {% endif %}
                             </span>

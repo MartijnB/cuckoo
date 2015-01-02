@@ -12,6 +12,7 @@ import logging
 import hashlib
 import xmlrpclib
 import traceback
+import json
 from ctypes import create_unicode_buffer, create_string_buffer
 from ctypes import c_wchar_p, byref, c_int, sizeof
 from threading import Lock, Thread
@@ -484,8 +485,10 @@ class Analyzer:
                 package = choose_package(self.config.file_type, self.config.file_name)
             # If it's an URL, we'll just use the default Internet Explorer
             # package.
-            else:
+            elif self.config.category == "url" or self.config.category == "url_list":
                 package = "ie"
+            else:
+                raise CuckooError("Unknown category: {0}".format(self.config.category))
 
             # If we weren't able to automatically determine the proper package,
             # we need to abort the analysis.
@@ -497,6 +500,9 @@ class Analyzer:
         # Otherwise just select the specified package.
         else:
             package = self.config.package
+
+        if self.config.category == "url_list" and package == "ie":
+            self.target = json.loads(self.target)
 
         # Generate the package path.
         package_name = "modules.packages.%s" % package

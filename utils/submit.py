@@ -74,6 +74,10 @@ def main():
                 print(bold(red("Error")) + ": you need to install python-requests (`pip install requests`)")
                 return False
 
+            if os.path.isfile(target):
+                print(bold(red("Error")) + ": Sending URL lists to remote servers is curently not supported")
+                return False
+
             url = "http://{0}/tasks/create/url".format(args.remote)
 
             data = dict(
@@ -99,18 +103,47 @@ def main():
             json = response.json()
             task_id = json["task_id"]
         else:
-            task_id = db.add_url(target,
-                                 package=args.package,
-                                 timeout=args.timeout,
-                                 options=args.options,
-                                 priority=args.priority,
-                                 machine=args.machine,
-                                 platform=args.platform,
-                                 custom=args.custom,
-                                 memory=args.memory,
-                                 enforce_timeout=args.enforce_timeout,
-                                 clock=args.clock,
-                                 tags=args.tags)
+            # Check of the argument to url is actually a file. In that case we treat is as an URL list
+            if os.path.isfile(target):
+                url_list = []
+
+                with open(target, "r") as f:
+                    for file_name in f:
+                        file_name = file_name.strip()
+
+                        if file_name != "":
+                            url_list.append(file_name)
+
+                if len(url_list) > 0:
+                    task_id = db.add_urls(url_list,
+                                     package=args.package,
+                                     timeout=args.timeout,
+                                     options=args.options,
+                                     priority=args.priority,
+                                     machine=args.machine,
+                                     platform=args.platform,
+                                     custom=args.custom,
+                                     memory=args.memory,
+                                     enforce_timeout=args.enforce_timeout,
+                                     clock=args.clock,
+                                     tags=args.tags)
+                else:
+                    print(bold(red("Error")) + ": URL list is empty")
+                    return False
+
+            else:
+                task_id = db.add_url(target,
+                                     package=args.package,
+                                     timeout=args.timeout,
+                                     options=args.options,
+                                     priority=args.priority,
+                                     machine=args.machine,
+                                     platform=args.platform,
+                                     custom=args.custom,
+                                     memory=args.memory,
+                                     enforce_timeout=args.enforce_timeout,
+                                     clock=args.clock,
+                                     tags=args.tags)
 
         if task_id:
             if not args.quiet:

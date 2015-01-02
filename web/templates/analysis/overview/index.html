@@ -2,7 +2,7 @@
 <hr />
 {% if analysis.info.category == "file" %}
     {% include "analysis/overview/_file.html" %}
-{% elif analysis.info.category == "url" %}
+{% elif analysis.info.category == "url" or analysis.info.category == "url_list" %}
     {% include "analysis/overview/_url.html" %}
 {% endif %}
 <hr />

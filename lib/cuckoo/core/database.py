@@ -5,6 +5,7 @@
 import os
 import json
 import logging
+import collections
 from datetime import datetime
 
 from lib.cuckoo.common.config import Config
@@ -816,10 +817,17 @@ class Database(object):
 
             task = Task(obj.file_path)
             task.sample_id = sample.id
+            task.category = obj.__class__.__name__.lower()
         elif isinstance(obj, URL):
             task = Task(obj.url)
+            task.category = "url"
+        elif isinstance(obj, list):
+            task = Task(json.dumps(obj))
+            task.category = "url_list"
+        else:
+            log.warning("Unknown object type submitted: " + str(type(obj)))
+            return None
 
-        task.category = obj.__class__.__name__.lower()
         task.timeout = timeout
         task.package = package
         task.options = options
@@ -915,6 +923,38 @@ class Database(object):
             priority = 1
 
         return self.add(URL(url), timeout, package, options, priority,
+                        custom, machine, platform, tags, memory,
+                        enforce_timeout, clock)
+
+    def add_urls(self, url_list, timeout=0, package="", options="", priority=1,
+                custom="", machine="", platform="", tags=None, memory=False,
+                enforce_timeout=False, clock=None):
+        """Add a task to database from a list of urls.
+        @param url_list: list with urls.
+        @param timeout: selected timeout.
+        @param options: analysis options.
+        @param priority: analysis priority.
+        @param custom: custom options.
+        @param machine: selected machine.
+        @param platform: platform.
+        @param tags: tags for machine selection
+        @param memory: toggle full memory dump.
+        @param enforce_timeout: toggle full timeout execution.
+        @param clock: virtual machine clock time
+        @return: cursor or None.
+        """
+
+        if not isinstance(url_list, collections.Iterable):
+            log.error("URL list is not iterable")
+            return None
+
+        # Convert empty strings and None values to a valid int
+        if not timeout:
+            timeout = 0
+        if not priority:
+            priority = 1
+
+        return self.add(url_list, timeout, package, options, priority,
                         custom, machine, platform, tags, memory,
                         enforce_timeout, clock)
 

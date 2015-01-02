@@ -109,7 +109,7 @@
                         </td>
                         <td>{{analysis.category|upper}}</td>
                         <td style="word-wrap: break-word;"><a href="{% url "analysis.views.report" analysis.id %}">
-                            {% if analysis.category == "url" %}
+                            {% if analysis.category == "url" or analysis.category == "url_list" %}
                                 <span class="mono">{{analysis.target}}</span></a>
                             {% else %}
                                 <span class="mono">{{analysis.sample.md5}}</span></a>

@@ -8,6 +8,7 @@ import sys
 import time
 import logging
 import argparse
+import json
 from datetime import datetime, timedelta
 
 try:
@@ -58,6 +59,8 @@ def parse_tasks(rows):
             if row.category == "file":
                 sample = db.view_sample(row.sample_id)
                 task["md5"] = sample.md5
+            elif row.category == "url_list":
+                task["target"] = ", ".join(json.loads(task["target"]))
 
             tasks.append(task)
     return tasks
