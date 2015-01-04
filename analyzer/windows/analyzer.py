@@ -62,7 +62,7 @@ def protected_filename(fname):
 
 def add_pid(pid):
     """Add a process to process list."""
-    if isinstance(pid, (int, long, str)):
+    if isinstance(pid, (int, long, str)) and pid not in PROCESS_LIST:
         log.info("Added new process to list with pid: %s", pid)
         PROCESS_LIST.append(int(pid))
 
@@ -638,11 +638,29 @@ class Analyzer:
                     # The analysis packages are provided with a function that
                     # is executed at every loop's iteration. If such function
                     # returns False, it means that it requested the analysis
-                    # to be terminate.
-                    if not pack.check():
+                    # to be terminate. If a number or list is returned, 1 or
+                    # more processes have been created that must be tracked.
+
+                    PROCESS_LOCK.acquire()  # Prevent conflicts with the pipe server
+
+                    check_result = pack.check()
+
+                    if not isinstance(check_result, bool):
+                        log.debug("Add pid {0} to PROCESS_LIST".format(check_result))
+
+                        add_pids(check_result)
+
+                        if not pid_check:
+                            pid_check = True
+
+                    elif not check_result:
                         log.info("The analysis package requested the "
                                  "termination of the analysis.")
+
+                        PROCESS_LOCK.release()
                         break
+
+                    PROCESS_LOCK.release()
 
                 # If the check() function of the package raised some exception
                 # we don't care, we can still proceed with the analysis but we
