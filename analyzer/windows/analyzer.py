@@ -228,8 +228,10 @@ class PipeHandler(Thread):
                 # any API hooks (at least for now), so we write a null-byte
                 # which indicates that all DLLs should be hooked.
                 if not is_url:
+                    log.info("Enable all API hooks")
                     response = "\x00"
                 else:
+                    log.info("URL detected; limit API hooks")
                     response = hookdll_encode(url_dlls)
 
             # In case of PID, the client is trying to notify the creation of
@@ -610,6 +612,8 @@ class Analyzer:
             # operating on the list of monitored processes. Therefore we
             # cannot proceed with the checks until the lock is released.
             if PROCESS_LOCK.locked():
+                log.debug("PROCESS_LOCK locked, skip ")
+
                 KERNEL32.Sleep(1000)
                 continue
 
