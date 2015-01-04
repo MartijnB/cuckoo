@@ -612,7 +612,7 @@ class Analyzer:
             # operating on the list of monitored processes. Therefore we
             # cannot proceed with the checks until the lock is released.
             if PROCESS_LOCK.locked():
-                log.debug("PROCESS_LOCK locked, skip ")
+                log.debug("PROCESS_LOCK locked, skip")
 
                 KERNEL32.Sleep(1000)
                 continue
