@@ -7,6 +7,7 @@ from lib.common.abstracts import Package
 import collections
 import logging
 import time
+import thread
 
 import comtypes
 import comtypes.client
@@ -28,6 +29,9 @@ READYSTATE_LOADING = 1,
 READYSTATE_LOADED = 2,
 READYSTATE_INTERACTIVE = 3,
 READYSTATE_COMPLETE = 4
+
+# http://msdn.microsoft.com/en-us/library/windows/desktop/bb762153%28v=vs.85%29.aspx
+SW_SHOW = 5
 
 log = logging.getLogger(__name__)
 
@@ -167,6 +171,22 @@ class IE(Package):
                 open_tab.Stop()
                 open_tab.Quit()
 
+    @staticmethod
+    def _nav_to_url(url):
+        comtypes.CoInitialize()
+
+        # We can't use _get_shell_windows_object as COM objects are thread specific
+        shell_windows_object = comtypes.client.CreateObject("{9BA05972-F6A8-11CF-A442-00A0C90A8F39}")
+
+        for i in range(shell_windows_object.Count):
+            ie_com_object = shell_windows_object.Item(i)
+
+            if not ie_com_object:
+                continue
+
+            ie_com_object.Navigate(url, NAV_OPEN_IN_NEW_TAB)
+            return
+
     def _open_new_tab(self, url, open_new_window):
         log.info("Open {0}".format(url))
 
@@ -182,7 +202,10 @@ class IE(Package):
                 if not ie_com_object:
                     continue
 
-                ie_com_object.Navigate(url, NAV_OPEN_IN_NEW_TAB)
+                # IWebBrowser2.Navigate() is a blocking COM call and require the full startup of the child process.
+                # As this depends on the confirmation of the PipeServer that is waiting on the release of
+                # PROCESS_LOCK this results in a deadlock.
+                thread.start_new_thread(self._nav_to_url, (url,))
 
                 return False
 
