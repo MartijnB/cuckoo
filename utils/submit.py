@@ -111,7 +111,7 @@ def main():
                     for file_name in f:
                         file_name = file_name.strip()
 
-                        if file_name != "":
+                        if file_name != "" and file_name[0] != "#":
                             url_list.append(file_name)
 
                 if len(url_list) > 0:
