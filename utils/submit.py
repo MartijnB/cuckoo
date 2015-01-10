@@ -108,11 +108,11 @@ def main():
                 url_list = []
 
                 with open(target, "r") as f:
-                    for file_name in f:
-                        file_name = file_name.strip()
+                    for url in f:
+                        url = url.strip()
 
-                        if file_name != "" and file_name[0] != "#":
-                            url_list.append(file_name)
+                        if url != "" and url[0] != "#":
+                            url_list.append(url)
 
                 if len(url_list) > 0:
                     task_id = db.add_urls(url_list,
