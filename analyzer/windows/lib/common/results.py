@@ -4,6 +4,7 @@
 
 import logging
 import socket
+import time
 
 from lib.core.config import Config
 
@@ -41,8 +42,11 @@ class NetlogConnection(object):
         try:
             s.connect((self.hostip, self.hostport))
             s.sendall(self.proto)
-        except:
-            pass
+        except Exception as e:
+            print "Failed to connect netlog connection!"
+            print e
+
+            time.sleep(1)
         else:
             self.sock = s
             self.file = s.makefile()
@@ -54,7 +58,12 @@ class NetlogConnection(object):
             self.connect()
             if retry:
                 self.send(data, retry=False)
-        except:
+        except Exception as e:
+            print "Failed to send data over netlog connection!"
+            print e
+
+            time.sleep(1)
+
             # We really have nowhere to log this, if the netlog connection
             # does not work, we can assume that any logging won't work either.
             # So we just fail silently.

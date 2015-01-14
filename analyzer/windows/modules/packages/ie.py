@@ -16,8 +16,8 @@ from _ctypes import COMError
 
 MAX_TABS = 5
 
-LOADING_TIMEOUT = 5
-READY_TIMEOUT = 10
+LOADING_TIMEOUT = 30
+READY_TIMEOUT = 15
 
 # http://msdn.microsoft.com/en-us/library/aa768360%28v=vs.85%29.aspx
 NAV_OPEN_IN_NEW_TAB = 0x0800
