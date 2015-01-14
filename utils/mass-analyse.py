@@ -106,15 +106,19 @@ class Improved_Process_Tracker(object):
     def get_list_of_checkers(self):
         # For now, every process tracks everything but we can filter this
         # if we want...
-        checkers = [Thread_Checker()]
+        checkers = [HTTP_Event(), File_Event(), Registry_Event()]
         return checkers
 
     def event(self, event):
         # Because multiple checkers might want to have access to the
         # same calls, we send every event to every checker
         for checker in self.event_checkers:
-            returnvalue = checker.crunch_call(event)
-            # If returnvalue
+            something_happened = checker.event_happened(event)
+            if something_happened == "new_url_in_tab":
+            	# Get the data and add to structure of Process
+                # Dit is 1 diep
+            elif something_happened == "event_at_timestamp":
+                
 
     def get_graph(self):
         self.clean_up()
@@ -126,27 +130,27 @@ class Improved_Process_Tracker(object):
 
 
 def Event(object):
-    pass
-
-
+    def event_happened(event):
+        
 def HTTP_Event(Event):
-    pass
-
+     
+    def get_prepared_datastructure(wut):
+        
+    def event_happened(event):
+        
 
 def File_Event(Event):
-    pass
-
-
+    def event_happened(event):
+        
 def Registry_Event(Event):
-    pass
-
-
+    def event_happened(event):
+        
 class Event_Based_DAG_Generator(DAG_Generator):
     events = {}
     graph = Graph()
 
     def new_process(self, parent_id, process_name, process_id, first_seen):
-        self.processes[process_id] = Process_Tracker(parent_id, process_name, process_id, first_seen)
+        self.processes[process_id] = Improved_Process_Tracker(parent_id, process_name, process_id, first_seen)
         # Put process in the graph, at the right place...
         # Check if parent exists in graph
         try:
@@ -156,21 +160,16 @@ class Event_Based_DAG_Generator(DAG_Generator):
                 self.graph.add_vertex()
                 vertex_id = len(self.graph.vs) - 1
                 self.graph.vs[vertex_id]["pid"] = process_id
-                self.graph.vs[vertex_id]["parent_id"] = parent_id
-                self.graph.vs[vertex_id]["process_name"] = process_name
-                self.graph.vs[vertex_id]["first_seen"] = first_seen
+                self.graph.vs[vertex_id]["label"] = "PID: " + process_id
+                self.graph.vs[vertex_id]["data"] = {"parent_id":parent_id,"process_name":process_name,"first_seen":first_seen}
 
                 self.graph.add_edges([(int(parent.index), int(vertex_id))])
         except Exception, e:
-            print e
             # The Graph is empty
-            print "The graph is empty..."
-            print "Create first vertex"
             self.graph.add_vertex()
             self.graph.vs[0]["pid"] = process_id
-            self.graph.vs[0]["parent_id"] = parent_id
-            self.graph.vs[0]["process_name"] = process_name
-            self.graph.vs[0]["first_seen"] = first_seen
+            self.graph.vs[0]["label"] = "PID: " + process_id
+            self.graph.vs[0]["data"] = {"parent_id":parent_id,"process_name":process_name,"first_seen":first_seen}
 
         print self.graph
 
@@ -511,7 +510,8 @@ def main():
     graph.vs["label"] = graph.vs["pid"]
     # layout_graph = graph.layout("rt")
     layout_graph = graph.layout("kk")
-    plot(graph, "~/Desktop/amazing.png", bbox=(9999, 9999), layout=layout_graph)
+    #plot(graph, "~/Desktop/amazing.png", bbox=(9999, 9999), layout=layout_graph)
+    plot(graph, bbox=(9999, 9999), layout=layout_graph)
 
 
 if __name__ == "__main__":
