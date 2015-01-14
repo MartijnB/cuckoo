@@ -271,28 +271,28 @@ class Thread_Based_DAG_Generator(DAG_Generator):
 				vertex_id = len(self.graph.vs) - 1
 				self.graph.vs[vertex_id]["pid"] = thread_id
 				self.graph.add_edges([(int(vertex_id_process), int(vertex_id))])
-				for call in process_datastructure[thread_id]:
-					if different_calls.has_key(call["api"]):
-						# De vertex en edge bestaan al, zoek de vertex op en verhoog de count
-						#wowz = str(thread_id) + "_" + call["api"] + "_" + str(different_calls[call["api"]])
-						#matches = self.graph.vs.select(pid_eq=wowz)
-						#vertex_api = ""
-						#if len(matches) == 1:
-						#	vertex_api = matches[0]
-						#else:
-						#	print "Geen matches gevonden"
-						#different_calls[call["api"]] += 1
-						#dfd = str(thread_id) + "_" + call["api"] + "_" + str(different_calls[call["api"]])
-						#print "Thread %s: call %s happened %i times" % (thread_id, call["api"], different_calls[call["api"]])
-						#vertex_api["pid"] = dfd
-						a = 2
-					else: # It's an API call we haven't seen before
-						self.graph.add_vertex()
-						vertex_id_call = len(self.graph.vs) - 1
-						print "Thread %s: call %s happened for the first time! Vertex %i" % (thread_id, call["api"], vertex_id_call)
-						self.graph.vs[vertex_id_call]["pid"] = thread_id + "_" + call["api"]# + "_" + str(1)
-						different_calls[call["api"]] = 1
-						self.graph.add_edges([(int(vertex_id), int(vertex_id_call))])
+				#for call in process_datastructure[thread_id]:
+				#	if different_calls.has_key(call["api"]):
+				#		# De vertex en edge bestaan al, zoek de vertex op en verhoog de count
+				#		#wowz = str(thread_id) + "_" + call["api"] + "_" + str(different_calls[call["api"]])
+				#		#matches = self.graph.vs.select(pid_eq=wowz)
+				#		#vertex_api = ""
+				#		#if len(matches) == 1:
+				#		#	vertex_api = matches[0]
+				#		#else:
+				#		#	print "Geen matches gevonden"
+				#		#different_calls[call["api"]] += 1
+				#		#dfd = str(thread_id) + "_" + call["api"] + "_" + str(different_calls[call["api"]])
+				#		#print "Thread %s: call %s happened %i times" % (thread_id, call["api"], different_calls[call["api"]])
+				#		#vertex_api["pid"] = dfd
+				#		a = 2
+				#	else: # It's an API call we haven't seen before
+				#		self.graph.add_vertex()
+				#		vertex_id_call = len(self.graph.vs) - 1
+				#		print "Thread %s: call %s happened for the first time! Vertex %i" % (thread_id, call["api"], vertex_id_call)
+				#		self.graph.vs[vertex_id_call]["pid"] = thread_id + "_" + call["api"]# + "_" + str(1)
+				#		different_calls[call["api"]] = 1
+				#		self.graph.add_edges([(int(vertex_id), int(vertex_id_call))])
 				
 
 class LogProcessorException(Exception):
