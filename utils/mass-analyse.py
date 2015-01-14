@@ -358,7 +358,7 @@ class JSONLogProcessor(AbstractLogProcessor):
 
         return False
 
-    def parse_events(self, max_events_to_process):
+    def parse_events(self, max_events_to_process=-1):
         # Report new process
         if self.current_process_calls_index == 0:
             self.event_handler.on_new_process(self.current_process_data["parent_id"],
@@ -369,7 +369,7 @@ class JSONLogProcessor(AbstractLogProcessor):
         while self.current_process_calls_index < self.current_process_calls_len:
             current_process_call = self.current_process_calls[self.current_process_calls_index]
 
-            if max_events_to_process > 0:
+            if max_events_to_process == -1 or max_events_to_process > 0:
                 self.event_handler.on_api_call(self.current_process_data["process_id"],
                                                current_process_call["category"],
                                                current_process_call["status"],
@@ -505,7 +505,7 @@ def main():
     log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(dag_event_handler))
 
     while log_processor.has_more_events():
-        log_processor.parse_events(100)
+        log_processor.parse_events()
 
     graph = dag_event_handler.no_more_events()
     graph.vs["label"] = graph.vs["pid"]
