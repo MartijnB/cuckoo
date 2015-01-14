@@ -131,7 +131,37 @@ class Registry_Event_Handler(object):
 		reg_keys_deleted[name + "\\" + get_argument_value(call["arguments"], "ValueName")] = 1
 
 
-		
+class Detecter(object):
+    def analyze_graph(graph):
+        pass
+
+class Subprocess_from_tab(Detecter):
+    def analyze_graph(self, graph):
+        # Get all vertices of event "on_new_process"		
+        new_process_events = graph.vs.select(event_eq="on_new_process")
+        for vertex in new_process_events:
+		# Check process depth
+		depth = 0
+		parent = ""
+		while(parent = get_process_parent(process_event)):
+			depth += 1
+
+		if depth > 1:
+			# Oh oh, we found a process two levels deep or lower
+			# We should probably return some object which documents the malicious behavior
+				# For Adriaan: Put a subgraph in the object ^ so that we can give a picture to the user (note "subgraph", so it's a very small one)
+			return "MALICIOUS BEHAVIOR DETECTED"
+
+    def get_process_parent(self, vertex):
+	neighbors = vertex.neighbors(vertex.index, mode=OUT)
+	good_neighbor = False 
+	for neighbor in neighbors:
+		if neighbor["event"] == "on_new_process":
+			# We got a neighbor that is an event created by a process spawn
+			good_neighbor = neighbor
+			break
+	return good_neighbor
+			
 
 class AbstractProcessAnalyser(object):
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
