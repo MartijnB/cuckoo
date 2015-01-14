@@ -5,8 +5,6 @@
 import os
 import codecs
 import base64
-import traceback
-import sys
 
 from lib.cuckoo.common.abstracts import Report
 from lib.cuckoo.common.constants import CUCKOO_ROOT
@@ -65,8 +63,6 @@ class ReportHTML(Report):
             tpl = env.get_template("report.html")
             html = tpl.render({"results": results})
         except Exception as e:
-            traceback.print_exc(file=sys.stdout)
-
             raise CuckooReportError("Failed to generate HTML report: %s" % e)
         
         try:

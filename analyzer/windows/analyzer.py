@@ -398,7 +398,7 @@ class Analyzer:
     procedure, including handling of the pipe server, the auxiliary modules and
     the analysis packages.
     """
-    PIPE_SERVER_COUNT = 10
+    PIPE_SERVER_COUNT = 4
 
     def __init__(self):
         self.pipes = [None]*self.PIPE_SERVER_COUNT

@@ -96,7 +96,7 @@ class Human(Auxiliary, Thread):
 
     def __init__(self):
         Thread.__init__(self)
-        self.do_run = False
+        self.do_run = True
 
     def stop(self):
         self.do_run = False

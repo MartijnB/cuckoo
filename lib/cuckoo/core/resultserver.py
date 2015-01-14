@@ -152,7 +152,7 @@ class ResultHandler(SocketServer.BaseRequestHandler):
             if not self.wait_sock_or_end():
                 raise Disconnect()
             tmp = self.request.recv(length-len(buf))
-            if tmp == "":
+            if not tmp:
                 raise Disconnect()
             buf += tmp
 
@@ -167,7 +167,7 @@ class ResultHandler(SocketServer.BaseRequestHandler):
         if not self.wait_sock_or_end():
             raise Disconnect()
         tmp = self.request.recv(BUFSIZE)
-        if tmp == "":
+        if not tmp:
             raise Disconnect()
         return tmp
 

@@ -207,51 +207,7 @@ class File:
             except:
                 pass
 
-        def to_unicode(s):
-            """Attempt to fix non uft-8 string into utf-8. It tries to guess input encoding,
-            if fail retry with a replace strategy (so undetectable chars will be escaped).
-            @see: fuller list of encodings at http://docs.python.org/library/codecs.html#standard-encodings
-            """
-
-            def brute_enc(s2):
-                """Trying to decode via simple brute forcing."""
-                encodings = ("ascii", "utf8", "latin1")
-                for enc in encodings:
-                    try:
-                        return unicode(s2, enc)
-                    except UnicodeDecodeError:
-                        pass
-                return None
-
-            def chardet_enc(s2):
-                """Guess encoding via chardet."""
-                enc = chardet.detect(s2)["encoding"]
-
-                try:
-                    return unicode(s2, enc)
-                except UnicodeDecodeError:
-                    pass
-                return None
-
-            # If already in unicode, skip.
-            if isinstance(s, unicode):
-                return s
-
-            # First try to decode against a little set of common encodings.
-            result = brute_enc(s)
-
-            # Try via chardet.
-            if not result and HAVE_CHARDET:
-                result = chardet_enc(s)
-
-            # If not possible to convert the input string, try again with
-            # a replace strategy.
-            if not result:
-                result = unicode(s, errors="replace")
-
-            return result
-
-        return to_unicode(file_type)
+        return file_type
 
     def get_yara(self, rulepath=os.path.join(CUCKOO_ROOT, "data", "yara", "index_binaries.yar")):
         """Get Yara signatures matches.
