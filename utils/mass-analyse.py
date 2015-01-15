@@ -240,9 +240,6 @@ class AbstractProcessAnalyser(object):
                    pid: the pid where the call happened'''
         pass
 
-    def on_new_url_in_tab(self):
-        pass
-
     def on_http_request(self):
         pass
 
@@ -318,9 +315,6 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_file_delete(self, event):
         super(AggregateProcessAnalyser, self).on_file_delete(event)
-
-    def on_new_url_in_tab(self):
-        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
 
     def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
@@ -769,11 +763,6 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.latest_get_per_process[process_id] = self.id_counter
         self.id_counter += 1
                 
-    def on_new_url_in_tab(self):
-        #super(AggregateProcessAnalyser, self).on_new_url_in_tab()
-        pass
-
-
     def find_latest_get_from_tab(self, pid):
         uid = latest_get_per_process[pid]
         matches = self.graph.vs.select(id_eq=uid)
