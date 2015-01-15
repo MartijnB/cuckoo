@@ -188,37 +188,62 @@ class Registry_Event_Handler(object):
 
 
 class Detecter(object):
-    def analyze_graph(graph):
+    name = "Analyzer"
+
+    def analyze_graph(self, graph):
         pass
 
+    # Handy dandy methods for subclasses
+
+    # Returns a list of all child vertex IDs (excl. vertex) 
+    def get_childs_of_vertex(self, graph, vertex):
+        return graph.neighborhood(vertex.index, order=len(graph.vs), mode=OUT)
+
+    # Returns a list of vertex IDs from the vertex to the root node (excl. vertex)
+    def vertex_to_root(self, vertex):
+        list_of_vertices = []
+        parent = self.get_parent(vertex)
+        while(parent):
+            list_of_vertices.append(parent.index)
+            parent = self.get_parent(parent)
+        return list_of_vertices
+
+    def get_parent(self, vertex):
+        neighbors = vertex.graph.neighbors(vertex.index, mode=IN)
+        if len(neighbors) == 1: # There should be just one incoming edge
+            parent = neighbors[0]
+            return parent
+        else:
+            return False
 
 class Subprocess_from_tab(Detecter):
+    name = "Subprocess_from_tab"
+
     def analyze_graph(self, graph):
+        subgraph = Graph()
+        return_value = {"malware_found":False,"graph":False}
         # Get all vertices of event "on_new_process"		
-        new_process_events = graph.vs.select(event_eq="on_new_process")
+        new_process_events = graph.vs.select(type_eq="on_new_process")
         for vertex in new_process_events:
             # Check process depth
-            depth = 0
-            parent = get_process_parent(process_event)
-            while(parent):
-                depth += 1
-                parent = get_process_parent(parent)
+            vertices_to_root = self.vertex_to_root(vertex)
 
-            if depth > 1:
-                # Oh oh, we found a process two levels deep or lower
-                # We should probably return some object which documents the malicious behavior
-                # For Adriaan: Put a subgraph in the object ^ so that we can give a picture to the user (note "subgraph", so it's a very small one)
-                return "MALICIOUS BEHAVIOR DETECTED"
+            if len(vertices_to_root) > 1:
+                # Oh oh, we found a process two levels deep or lower *runs around*
+                return_value["malware_found"] = True
 
-    def get_process_parent(self, vertex):
-        neighbors = vertex.neighbors(vertex.index, mode=OUT)
-        good_neighbor = False
-        for neighbor in neighbors:
-            if neighbor["event"] == "on_new_process":
-                # We got a neighbor that is an event created by a process spawn
-                good_neighbor = neighbor
+                # Create subgraph
+                all_relevant_vertices = [vertex.index]
+                all_relevant_vertices.extend(vertices_to_root)
+                all_relevant_vertices.extend(self.get_childs_of_vertex(graph, vertex))
+                return_value["graph"] = graph.subgraph(all_relevant_vertices)
+
+                # TODO: We might find multiple processes like this, that we find interesting: show them all in one graph...
+                # For now, let just break
                 break
-        return good_neighbor
+
+        return return_value
+
 
 
 def parse_handle(handle):
@@ -1035,9 +1060,22 @@ def main():
 
     # Get the graph
     graph = graph_generator.get_graph()
-    layout_graph = graph.layout("kk")
-    plot(graph, bbox=(1000,1000), layout=layout_graph)
-
+    
+    # Run Analyzers
+    for analyzer in [Subprocess_from_tab()]:
+        results = analyzer.analyze_graph(graph)
+        if results["malware_found"]:
+            print "Analyzer '%s' found:" % analyzer.name
+            # Show subgraph with relevant data
+            if results["graph"]:
+                layout_graph = results["graph"].layout("kk")
+                plot(results["graph"], bbox=(1000,1000), layout=layout_graph)
+        else:
+            print "Analyzer '%s' did not find anything interesting." % analyzer.name
+        
+    # Show graph - used for debugging right now...
+    #layout_graph = graph.layout("kk")
+    #plot(graph, bbox=(1000,1000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
