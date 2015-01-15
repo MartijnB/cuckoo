@@ -252,10 +252,10 @@ class AbstractProcessAnalyser(object):
     def on_file_delete(self, event):
         pass
 
-    def on_registry_set(self):
+    def on_registry_set(self, process_id, thread_id, key, value):
         pass
 
-    def on_registry_delete(self):
+    def on_registry_delete(self, process_id, thread_id, key):
         pass
 
     def on_socket_connect(self):
@@ -322,13 +322,13 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def on_new_url_in_tab(self):
         super(AggregateProcessAnalyser, self).on_new_url_in_tab()
 
-    def on_registry_set(self, key, value):
+    def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
         # super(AggregateProcessAnalyser, self).on_registry_set()
 
     def on_registry_delete(self, process_id, thread_id, key):
         print "REGISTRY DELETE: %s" % key
-        self.event_handler.on_registry_delete 
+        self.event_handler.on_registry_delete(process_id, thread_id, key) 
         # super(AggregateProcessAnalyser, self).on_registry_delete()
 
     def on_shell_execute(self, process_id, thread_id, command):
@@ -361,9 +361,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         if event:
             # Call on_registry_delete() or on_registry_set
             if event["type"] == "set":
-                self.on_registry_set(event["key"], event["value"])
+                self.on_registry_set(process_id, thread_id, event["key"], event["value"])
             elif event["type"] == "deleted":
-                self.on_registry_delete(event["key"])
+                self.on_registry_delete(process_id, thread_id, event["key"])
 
     def __process_socket_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                arguments, call_id):
@@ -648,7 +648,7 @@ class GraphGenerator(AbstractProcessAnalyser):
                 parent = parents[0]
                 self.graph.add_vertex()
                 vertex_id = len(self.graph.vs) - 1
-                self.graph.vs[vertex_id]["id"] = id_counter
+                self.graph.vs[vertex_id]["id"] = self.id_counter
                 self.graph.vs[vertex_id]["pid"] = process_id
                 self.graph.vs[vertex_id]["thread_id"] = 0
                 self.graph.vs[vertex_id]["type"] = "on_new_process"
@@ -674,34 +674,35 @@ class GraphGenerator(AbstractProcessAnalyser):
 
             # Make root node
             self.graph.add_vertex()
-            self.graph.vs[0]["id"] = id_counter
+            self.graph.vs[0]["id"] = self.id_counter
             self.graph.vs[0]["pid"] = parent_id
             self.graph.vs[0]["thread_id"] = 0
             self.graph.vs[0]["type"] = "on_new_process"
-            self.graph.vs[0]["label"] = "Process: " + parent_id 
+            self.graph.vs[0]["label"] = "Process: " + str(parent_id)
             self.graph.vs[0]["data"] = {"name":"Cuckoo Analyzer","timestamp":first_seen,"parent_id":0}
-            id_counter += 1
+            self.id_counter += 1
 
             # Make node of the tab/window
             self.graph.add_vertex()
-            self.graph.vs[1]["id"] = id_counter
+            self.graph.vs[1]["id"] = self.id_counter
             self.graph.vs[1]["pid"] = process_id
             self.graph.vs[1]["thread_id"] = 0
             self.graph.vs[1]["type"] = "on_new_process"
-            self.graph.vs[1]["label"] = "Process: " + process_id
+            self.graph.vs[1]["label"] = "Process: " + str(process_id)
             self.graph.vs[1]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
             # Create edge from root node to tab/window process
             self.graph.add_edges([(0, 1)])
             
 
-        id_counter += 1
+        self.id_counter += 1
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+        pass
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
-        self.graph.vs[vertex_id]["id"] = id_counter
+        self.graph.vs[vertex_id]["id"] = self.id_counter
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_http_request"
@@ -735,8 +736,8 @@ class GraphGenerator(AbstractProcessAnalyser):
                         
 
         # Update dict met laatste HTTP request
-        latest_get_per_process[process_id] = id_counter
-        id_counter += 1
+        latest_get_per_process[process_id] = self.id_counter
+        self.id_counter += 1
                 
     def on_new_url_in_tab(self):
         #super(AggregateProcessAnalyser, self).on_new_url_in_tab()
@@ -751,7 +752,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         else:
             raise Exception("Unique ID not found")
 
-    def get_graph():
+    def get_graph(self):
         return self.graph
 
 class LogProcessorException(Exception):
@@ -940,10 +941,16 @@ def main():
 
     log.info("Parse log....")
 
-    log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(AggregateProcessAnalyser(GraphGenerator())))
+    graph_generator = GraphGenerator()
+    log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(AggregateProcessAnalyser(graph_generator)))
 
     while log_processor.has_more_events():
         log_processor.parse_events()
+
+    # Get the graph
+    graph = graph_generator.get_graph()
+    layout_graph = graph.layout("kk")
+    plot(graph, bbox=(1000,1000), layout=layout_graph)
 
 
 if __name__ == "__main__":
