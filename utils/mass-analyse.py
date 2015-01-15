@@ -29,6 +29,7 @@ class Registry_Event_Handler(object):
 
 	# Nasty code incoming
     def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id):
+        event = False
         pid = process_id
         if not self.registry.has_key(pid):
             self.registry[pid] = {
@@ -98,10 +99,13 @@ class Registry_Event_Handler(object):
         elif api == "NtSetValueKey":
             registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
             self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
+
+            event = {"type":"set","key":registry_name + r'\\' + arguments["ValueName"],"value":arguments["Buffer"]}
         elif api == "RegSetValueExA" or api == "RegSetValueExW":
             try:
                 registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
                 self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
+                event = {"type":"set","key":registry_name + r'\\' + arguments["ValueName"],"value":arguments["Buffer"]}
             except:
                 if "RegSetValueEx" in self.anomalities:
                     self.anomalities["RegSetValueEx"].append("Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'")
@@ -117,15 +121,23 @@ class Registry_Event_Handler(object):
         elif api == "NtDeleteKey":
             registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name] = 1
+    
+            event = {"type":"deleted","key":registry_name}
         elif api == "RegDeleteKeyA" or api == "RegDeleteKeyW":
             registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name + r'\\' + arguments["SubKey"]] = 1
+
+            event = {"type":"deleted","key":registry_name + r'\\' + arguments["SubKey"]}
         elif api == "RegDeleteValueA" or api == "RegDeleteValueW":
             try:
                 name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
             except:
                 name = arguments["ValueName"]
             self.registry[pid]["reg_keys_deleted"][name + r'\\' + arguments["ValueName"]] = 1
+
+            event = {"type":"deleted", "key":name + r'\\' + arguments["ValueName"]}
+
+        return event
 
 
 class Detecter(object):
@@ -255,11 +267,13 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def on_file_delete(self, event):
         super(AggregateProcessAnalyser, self).on_file_delete(event)
 
-    def on_registry_set(self):
-        super(AggregateProcessAnalyser, self).on_registry_set()
+    def on_registry_set(self, key, value):
+        print "REGISTRY SET: %s = %s" % (key, value)
+        #super(AggregateProcessAnalyser, self).on_registry_set()
 
-    def on_registry_delete(self):
-        super(AggregateProcessAnalyser, self).on_registry_delete()
+    def on_registry_delete(self, key):
+        print "REGISTRY DELETE: %s" % key
+        #super(AggregateProcessAnalyser, self).on_registry_delete()
 
     def on_shell_execute(self):
         super(AggregateProcessAnalyser, self).on_shell_execute()
@@ -286,8 +300,12 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def __process_registry_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                  arguments, call_id):
         event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
-        #if event:
+        if event:
             # Call on_registry_delete() or on_registry_set
+            if event["type"] == "set":
+                self.on_registry_set(event["key"], event["value"])
+            elif event["type"] == "deleted":
+                self.on_registry_delete(event["key"])
 
     def __process_socket_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                arguments, call_id):
