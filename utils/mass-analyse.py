@@ -239,6 +239,9 @@ class AbstractProcessAnalyser(object):
                    pid: the pid where the call happened'''
         pass
 
+    def on_new_url_in_tab(self):
+        pass
+
     def on_http_request(self):
         pass
 
@@ -314,6 +317,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_file_delete(self, event):
         super(AggregateProcessAnalyser, self).on_file_delete(event)
+
+    def on_new_url_in_tab(self):
+        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
 
     def on_registry_set(self, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
@@ -646,6 +652,8 @@ class GraphGenerator(AbstractProcessAnalyser):
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
                 
+    def on_new_url_in_tab(self):
+        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
 
 
     def find_latest_get_from_tab(self, pid):
