@@ -22,37 +22,39 @@ from lib.cuckoo.core.database import TASK_REPORTED, TASK_FAILED_ANALYSIS, TASK_F
 from lib.cuckoo.core.startup import init_modules
 from lib.cuckoo.common.colors import bold, red, green, yellow
 
+
 class Registry_Event_Handler(object):
     registry = {}
     anomalities = {}
     pp = pprint.PrettyPrinter(indent=4)
 
-	# Nasty code incoming
-    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id):
+    # Nasty code incoming
+    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+                    call_id):
         event = False
         pid = process_id
         if not self.registry.has_key(pid):
             self.registry[pid] = {
                 "reg_keys_created": {},
                 "reg_keys_deleted": {},
-                "reg_keys_values" : {},
+                "reg_keys_values": {},
                 "reg_keys_process_handle": {
-                        "0x80000000":"HKEY_CLASSES_ROOT",
-                        "0x80000001":"HKEY_CURRENT_USER",
-                        "0x80000002":"HKEY_LOCAL_MACHINE",
-                        "0x80000003":"HKEY_USERS",
-                        "0x80000004":"HKEY_PERFORMANCE_DATA",
-                        "0x80000005":"HKEY_CURRENT_CONFIG",
-                        "0x80000006":"HKEY_DYN_DATA"
+                    "0x80000000": "HKEY_CLASSES_ROOT",
+                    "0x80000001": "HKEY_CURRENT_USER",
+                    "0x80000002": "HKEY_LOCAL_MACHINE",
+                    "0x80000003": "HKEY_USERS",
+                    "0x80000004": "HKEY_PERFORMANCE_DATA",
+                    "0x80000005": "HKEY_CURRENT_CONFIG",
+                    "0x80000006": "HKEY_DYN_DATA"
                 },
                 "predefined_key_handle": {
-                        "0x80000000":"HKEY_CLASSES_ROOT",
-                        "0x80000001":"HKEY_CURRENT_USER",
-                        "0x80000002":"HKEY_LOCAL_MACHINE",
-                        "0x80000003":"HKEY_USERS",
-                        "0x80000004":"HKEY_PERFORMANCE_DATA",
-                        "0x80000005":"HKEY_CURRENT_CONFIG",
-                        "0x80000006":"HKEY_DYN_DATA"
+                    "0x80000000": "HKEY_CLASSES_ROOT",
+                    "0x80000001": "HKEY_CURRENT_USER",
+                    "0x80000002": "HKEY_LOCAL_MACHINE",
+                    "0x80000003": "HKEY_USERS",
+                    "0x80000004": "HKEY_PERFORMANCE_DATA",
+                    "0x80000005": "HKEY_CURRENT_CONFIG",
+                    "0x80000006": "HKEY_DYN_DATA"
                 }
             }
         thread_id_ = thread_id + "_"
@@ -77,25 +79,30 @@ class Registry_Event_Handler(object):
                 print "REGISTRY\t entry exists in reg_keys_process_handle"
                 print "REGISTRY\t voeg de key in ^ (is een van de predefined) toe aan de subkey en sla die op in created"
                 print "REGISTRY\t Zet de TID_Handle -> volledige key in reg_keys_process_handle"
-                self.registry[pid]["reg_keys_created"][self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
-                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
+                self.registry[pid]["reg_keys_created"][
+                    self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
+                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
+                    self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
             else:
                 try:
                     print "REGISTRY\t entry does NOT exist in reg_keys_process_handle, de registry key is dus niet predefined"
                     print "REGISTRY\t Mogelijk is het dus opgeslagen uit vorige entries als TID_handle"
                     name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry]
                     self.registry[pid]["reg_keys_created"][name + r'\\' + subkey] = 1
-                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
+                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
+                        self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
                 except:
                     # Pech gehad
                     print "REGISTRY\t Pech gehad..."
                     if "RegCreateKeyEx" in self.anomalities:
-                        self.anomalities["RegCreateKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
+                        self.anomalities["RegCreateKeyEx"].append(
+                            "Could not find handle to open the subkey '" + subkey + "'")
                     else:
-                        self.anomalities["RegCreateKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
+                        self.anomalities["RegCreateKeyEx"] = [
+                            "Could not find handle to open the subkey '" + subkey + "'"]
 
-            #self.registry[pid]["reg_keys_created"][subkey] = 1
-            #self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+                        # self.registry[pid]["reg_keys_created"][subkey] = 1
+                        #self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
 
         # OPENING REGISTRY KEYS
         elif api == "NtOpenKey":
@@ -110,17 +117,21 @@ class Registry_Event_Handler(object):
             registry = arguments["Registry"]
             subkey = arguments["SubKey"]
             if registry in self.registry[pid]["reg_keys_process_handle"]:
-                self.registry[pid]["reg_keys_created"][self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
-                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
+                self.registry[pid]["reg_keys_created"][
+                    self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
+                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
+                    self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
             else:
                 try:
                     name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry]
                     self.registry[pid]["reg_keys_created"][name + r'\\' + subkey] = 1
-                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
+                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
+                        self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
                 except:
                     # Pech gehad
                     if "RegOpenKeyEx" in self.anomalities:
-                        self.anomalities["RegOpenKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
+                        self.anomalities["RegOpenKeyEx"].append(
+                            "Could not find handle to open the subkey '" + subkey + "'")
                     else:
                         self.anomalities["RegOpenKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
 
@@ -129,17 +140,21 @@ class Registry_Event_Handler(object):
             registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
             self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
 
-            event = {"type":"set","key":registry_name + r'\\' + arguments["ValueName"],"value":arguments["Buffer"]}
+            event = {"type": "set", "key": registry_name + r'\\' + arguments["ValueName"], "value": arguments["Buffer"]}
         elif api == "RegSetValueExA" or api == "RegSetValueExW":
             try:
                 registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
-                self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
-                event = {"type":"set","key":registry_name + r'\\' + arguments["ValueName"],"value":arguments["Buffer"]}
+                self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments[
+                    "Buffer"]
+                event = {"type": "set", "key": registry_name + r'\\' + arguments["ValueName"],
+                         "value": arguments["Buffer"]}
             except:
                 if "RegSetValueEx" in self.anomalities:
-                    self.anomalities["RegSetValueEx"].append("Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'")
+                    self.anomalities["RegSetValueEx"].append(
+                        "Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'")
                 else:
-                    self.anomalities["RegSetValueEx"] = ["Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'"]
+                    self.anomalities["RegSetValueEx"] = [
+                        "Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'"]
 
         # CLOSING REGISTRY KEYS
         elif api == "RegCloseKey":
@@ -148,15 +163,17 @@ class Registry_Event_Handler(object):
 
         # DELETING REGISTRY KEYS
         elif api == "NtDeleteKey":
-            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
+            registry_name = self.registry[pid]["reg_keys_process_handle"][
+                thread_id_ + handle]  # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name] = 1
-    
-            event = {"type":"deleted","key":registry_name}
+
+            event = {"type": "deleted", "key": registry_name}
         elif api == "RegDeleteKeyA" or api == "RegDeleteKeyW":
-            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
+            registry_name = self.registry[pid]["reg_keys_process_handle"][
+                thread_id_ + handle]  # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name + r'\\' + arguments["SubKey"]] = 1
 
-            event = {"type":"deleted","key":registry_name + r'\\' + arguments["SubKey"]}
+            event = {"type": "deleted", "key": registry_name + r'\\' + arguments["SubKey"]}
         elif api == "RegDeleteValueA" or api == "RegDeleteValueW":
             try:
                 name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
@@ -164,7 +181,7 @@ class Registry_Event_Handler(object):
                 name = arguments["ValueName"]
             self.registry[pid]["reg_keys_deleted"][name + r'\\' + arguments["ValueName"]] = 1
 
-            event = {"type":"deleted", "key":name + r'\\' + arguments["ValueName"]}
+            event = {"type": "deleted", "key": name + r'\\' + arguments["ValueName"]}
 
         return event
 
@@ -172,6 +189,7 @@ class Registry_Event_Handler(object):
 class Detecter(object):
     def analyze_graph(graph):
         pass
+
 
 class Subprocess_from_tab(Detecter):
     def analyze_graph(self, graph):
@@ -181,13 +199,13 @@ class Subprocess_from_tab(Detecter):
             # Check process depth
             depth = 0
             parent = ""
-            #while((parent = get_process_parent(process_event))):
+            # while((parent = get_process_parent(process_event))):
             #    depth += 1
 
             if depth > 1:
                 # Oh oh, we found a process two levels deep or lower
                 # We should probably return some object which documents the malicious behavior
-                    # For Adriaan: Put a subgraph in the object ^ so that we can give a picture to the user (note "subgraph", so it's a very small one)
+                # For Adriaan: Put a subgraph in the object ^ so that we can give a picture to the user (note "subgraph", so it's a very small one)
                 return "MALICIOUS BEHAVIOR DETECTED"
 
     def get_process_parent(self, vertex):
@@ -199,7 +217,7 @@ class Subprocess_from_tab(Detecter):
                 good_neighbor = neighbor
                 break
         return good_neighbor
-			
+
 
 def parse_handle(handle):
     if isinstance(handle, (str, unicode)) and handle[:2] == "0x":
@@ -298,15 +316,15 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_registry_set(self, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
-        #super(AggregateProcessAnalyser, self).on_registry_set()
+        # super(AggregateProcessAnalyser, self).on_registry_set()
 
     def on_registry_delete(self, key):
         print "REGISTRY DELETE: %s" % key
-        #super(AggregateProcessAnalyser, self).on_registry_delete()
+        # super(AggregateProcessAnalyser, self).on_registry_delete()
 
     def on_shell_execute(self, command):
         print "SHELL COMMAND: %s" % command
-        #super(AggregateProcessAnalyser, self).on_shell_execute()
+        # super(AggregateProcessAnalyser, self).on_shell_execute()
 
     def on_file_write(self):
         super(AggregateProcessAnalyser, self).on_file_write()
@@ -329,7 +347,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def __process_registry_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                  arguments, call_id):
-        event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
+        event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated,
+                                          api, arguments, call_id)
         if event:
             # Call on_registry_delete() or on_registry_set
             if event["type"] == "set":
@@ -535,14 +554,14 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             print api
 
     def __process_system_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
-                                   api, arguments, call_id):
+                               api, arguments, call_id):
         __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
 
         if api == "NtClose":
             file_handle = parse_handle(arguments["Handle"])
 
-            if file_handle not in __filesystem_state["handles"]: # Not all NtClose calls are related to the FS
-                #raise ApiStateException("Handle {0} is not yet created in this process!".format(file_handle))
+            if file_handle not in __filesystem_state["handles"]:  # Not all NtClose calls are related to the FS
+                # raise ApiStateException("Handle {0} is not yet created in this process!".format(file_handle))
                 return
 
             __filesystem_state["handles"].remove(file_handle)
@@ -771,6 +790,7 @@ def main():
 
     while log_processor.has_more_events():
         log_processor.parse_events()
+
 
 if __name__ == "__main__":
     cfg = Config()
