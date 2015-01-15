@@ -8,6 +8,8 @@ import os
 import sys
 import time
 
+import pprint
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
 
@@ -22,11 +24,14 @@ from lib.cuckoo.common.colors import bold, red, green, yellow
 
 class Registry_Event_Handler(object):
     registry = {}
+    anomalities = {}
+    pp = pprint.PrettyPrinter(indent=4)
 
 	# Nasty code incoming
-    def on_api_call(self, call, pid):
-        if not registry.has_key(pid):
-            registry[pid] = {
+    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id):
+        pid = process_id
+        if not self.registry.has_key(pid):
+            self.registry[pid] = {
                 "reg_keys_created": {},
                 "reg_keys_deleted": {},
                 "reg_keys_values" : {},
@@ -41,92 +46,86 @@ class Registry_Event_Handler(object):
                         "0x80000006":"HKEY_DYN_DATA"
                 }
             }
-        thread_id = call["thread_id"]
         thread_id_ = thread_id + "_"
         handle = ""
-        if get_argument_value(call["arguments"], "KeyHandle") != "":
-            handle = get_argument_value(call["arguments"], "KeyHandle")
+        
+        #self.pp.pprint(arguments)
+        if "KeyHandle" in arguments:
+            handle = arguments["KeyHandle"]
         else:
-            handle = get_argument_value(call["arguments"], "Handle")
+            handle = arguments["Handle"]
 
 
         # CREATING REGISTRY KEYS
-        if call["api"] == "NtCreateKey":
-            path = get_argument_value(call["arguments"], "ObjectAttributes")
-            registry[pid]["reg_keys_created"][path] = 1
-            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
-        elif call["api"] == "RegCreateKeyExA" or call["api"] == "RegCreateKeyExW":
-            subkey = get_argument_value(call["arguments"], "SubKey")
-            registry[pid]["reg_keys_created"][subkey] = 1
-            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+        if api == "NtCreateKey":
+            path = arguments["ObjectAttributes"]
+            self.registry[pid]["reg_keys_created"][path] = 1
+            self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
+        elif api == "RegCreateKeyExA" or api == "RegCreateKeyExW":
+            # TODO: We're working with a subkey, not the whole key, check registry value...
+            subkey = arguments["SubKey"]
+            self.registry[pid]["reg_keys_created"][subkey] = 1
+            self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+
         # OPENING REGISTRY KEYS
-        elif call["api"] == "NtOpenKey":
-            path = get_argument_value(call["arguments"], "ObjectAttributes")
-            registry[pid]["reg_keys_created"][path] = 1
-            registry[pid]["reg_keys_process_handle"][call[thread_id_ + handle] = path
-        elif call["api"] == "NtOpenKeyEx":
-            path = get_argument_value(call["arguments"], "ObjectAttributes")
-            registry[pid]["reg_keys_created"][path] = 1
-            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
-        elif call["api"] == "RegOpenKeyExA" or call["api"] == "RegOpenKeyExW":
-            registry = get_argument_value(call["arguments"], "Registry")
-            handle = get_argument_value(call["arguments"], "Handle")
-            subkey = get_argument_value(call["arguments"], "SubKey")
-            if registry in reg_keys_process_handle:
-                registry[pid]["reg_keys_created"][[reg_keys_process_handle[registry] + "\\\\" + subkey] = 1
-                reg_keys_process_handle[call["thread_id"] + "_" + handle] = predefined_key_handle[registry] + "\\\\" + subkey
+        elif api == "NtOpenKey":
+            path = arguments["ObjectAttributes"]
+            self.registry[pid]["reg_keys_created"][path] = 1
+            self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
+        elif api == "NtOpenKeyEx":
+            path = arguments["ObjectAttributes"]
+            self.registry[pid]["reg_keys_created"][path] = 1
+            self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
+        elif api == "RegOpenKeyExA" or api == "RegOpenKeyExW":
+            registry = arguments["Registry"]
+            subkey = arguments["SubKey"]
+            if registry in self.registry[pid]["reg_keys_process_handle"]:
+                self.registry[pid]["reg_keys_created"][self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
+                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
             else:
                 try:
-                    name = reg_keys_process_handle[call["thread_id"] + "_" + registry]
-                    reg_keys_created[name + "\\\\" + subkey] = 1
-                    reg_keys_process_handle[call["thread_id"] + "_" + handle] = reg_keys_process_handle[call["thread_id"] + "_" + registry] + "\\\\" + subkey
+                    name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry]
+                    self.registry[pid]["reg_keys_created"][name + r'\\' + subkey] = 1
+                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
                 except:
                     # Pech gehad
-                    if "RegOpenKeyEx" in anomalities:
-                        anomalities["RegOpenKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
+                    if "RegOpenKeyEx" in self.anomalities:
+                        self.anomalities["RegOpenKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
                     else:
-                        anomalities["RegOpenKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
+                        self.anomalities["RegOpenKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
+
         # SETTING REGISTRY KEYS
-        elif call["api"] == "NtSetValueKey":
-            #print "%s NtSetValueKey: KeyHandle = %s, '%s' = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"), get_argument_value(call["arguments"], "ValueName"), get_argument_value(call["arguments"], "Buffer"))
-            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "KeyHandle")]
-            reg_keys_values[registry_name + "\\" + get_argument_value(call["arguments"], "ValueName")] = get_argument_value(call["arguments"], "Buffer")
-        elif call["api"] == "RegSetValueExA" or call["api"] == "RegSetValueExW":
-            #print "%s RegSetValueEx: KeyHandle = %s, '%s' = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "ValueName"), get_argument_value(call["arguments"], "Buffer"))
+        elif api == "NtSetValueKey":
+            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
+            self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
+        elif api == "RegSetValueExA" or api == "RegSetValueExW":
             try:
-                registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
-                reg_keys_values[registry_name + "\\" + get_argument_value(call["arguments"], "ValueName")] = get_argument_value(call["arguments"], "Buffer")
+                registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
+                self.registry[pid]["reg_keys_values"][registry_name + r'\\' + arguments["ValueName"]] = arguments["Buffer"]
             except:
-                if "RegSetValueEx" in anomalities:
-                    anomalities["RegSetValueEx"].append("Could not find handle '" + get_argument_value(call["arguments"], "Handle") + " to safe', value = '"+get_argument_value(call["arguments"], "Buffer")+"'")
+                if "RegSetValueEx" in self.anomalities:
+                    self.anomalities["RegSetValueEx"].append("Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'")
                 else:
-                    anomalities["RegSetValueEx"] = ["Could not find handle '" + get_argument_value(call["arguments"], "Handle") + " to safe', value = '"+get_argument_value(call["arguments"], "Buffer")+"'"]
+                    self.anomalities["RegSetValueEx"] = ["Could not find handle '" + handle + " to safe', value = '" + arguments["Buffer"] + "'"]
 
         # CLOSING REGISTRY KEYS
-        elif call["api"] == "RegCloseKey":
-            #print "%s RegCloseKey: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"))
-            if call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle") in reg_keys_process_handle:
-                del reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
+        elif api == "RegCloseKey":
+            if thread_id_ + handle in self.registry[pid]["reg_keys_process_handle"]:
+                del self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
+
         # DELETING REGISTRY KEYS
-        elif call["api"] == "NtDeleteKey":
-            #print "%s NtDeleteKey: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"))
-            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "KeyHandle")] # Naam die bij handle hoort
-            reg_keys_deleted[registry_name] = 1
-        elif call["api"] == "RegDeleteKeyA":
-            #print "%s RegDeleteKeyA: KeyHandle = %s, SubKey = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "SubKey"))
-            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")] # Naam die bij handle hoort
-            reg_keys_deleted[registry_name + "\\" + get_argument_value(call["arguments"], "SubKey")] = 1
-        elif call["api"] == "RegDeleteKeyW":
-            #print "%s RegDeleteKeyW: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"))
-            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")] # Naam die bij handle hoort
-            reg_keys_deleted[registry_name + "\\" + get_argument_value(call["arguments"], "SubKey")] = 1
-        elif call["api"] == "RegDeleteValueA" or call["api"] == "RegDeleteValueW":
-            print "%s RegDeleteValueA: KeyHandle = %s, '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "ValueName"))
+        elif api == "NtDeleteKey":
+            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
+            self.registry[pid]["reg_keys_deleted"][registry_name] = 1
+        elif api == "RegDeleteKeyA" or api == "RegDeleteKeyW":
+            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] # Naam die bij handle hoort
+            self.registry[pid]["reg_keys_deleted"][registry_name + r'\\' + arguments["SubKey"]] = 1
+        elif api == "RegDeleteValueA" or api == "RegDeleteValueW":
             try:
-                name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
+                name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]
             except:
-                name = get_argument_value(call["arguments"], "ValueName")
-            reg_keys_deleted[name + "\\" + get_argument_value(call["arguments"], "ValueName")] = 1
+                name = arguments["ValueName"]
+            self.registry[pid]["reg_keys_deleted"][name + r'\\' + arguments["ValueName"]] = 1
 
 
 class Detecter(object):
@@ -141,8 +140,8 @@ class Subprocess_from_tab(Detecter):
             # Check process depth
             depth = 0
             parent = ""
-            while(parent = get_process_parent(process_event)):
-                depth += 1
+            #while((parent = get_process_parent(process_event))):
+            #    depth += 1
 
             if depth > 1:
                 # Oh oh, we found a process two levels deep or lower
@@ -186,7 +185,7 @@ class AbstractProcessAnalyser(object):
     def on_file_write(self):
         pass
 
-    def on_file_delete(self):
+    def on_file_delete(self, event):
         pass
 
     def on_registry_set(self):
@@ -213,6 +212,7 @@ class ApiStateException(Exception):
 class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def __init__(self, event_handler):
         self.event_handler = event_handler
+        self.registry = Registry_Event_Handler()
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
@@ -252,8 +252,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
         callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
 
-    def on_file_delete(self):
-        super(AggregateProcessAnalyser, self).on_file_delete()
+    def on_file_delete(self, event):
+        super(AggregateProcessAnalyser, self).on_file_delete(event)
 
     def on_registry_set(self):
         super(AggregateProcessAnalyser, self).on_registry_set()
@@ -285,7 +285,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def __process_registry_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                  arguments, call_id):
-        pass
+        event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
+        #if event:
+            # Call on_registry_delete() or on_registry_set
 
     def __process_socket_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
                                arguments, call_id):
