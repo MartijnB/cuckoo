@@ -8,16 +8,19 @@ import collections
 import logging
 import time
 import thread
+import random
 
 import comtypes
 import comtypes.client
 
 from _ctypes import COMError
 
-MAX_TABS = 5
+import _winreg
 
-LOADING_TIMEOUT = 5
-READY_TIMEOUT = 10
+MAX_TABS = 10
+
+LOADING_TIMEOUT = 30
+READY_TIMEOUT = 15
 
 # http://msdn.microsoft.com/en-us/library/aa768360%28v=vs.85%29.aspx
 NAV_OPEN_IN_NEW_TAB = 0x0800
@@ -49,6 +52,13 @@ class IE(Package):
         self._open_tab_data = {}
         self._url_queue = collections.deque()
         self._wait_for_tab = False
+
+        # Force the usage of 1 tab / process
+        _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, "Software\Microsoft\Internet Explorer\Main")
+        registry_key = _winreg.OpenKey(_winreg.HKEY_CURRENT_USER, "Software\Microsoft\Internet Explorer\Main", 0,
+                                       _winreg.KEY_WRITE)
+        _winreg.SetValueEx(registry_key, "TabProcGrowth", 0, _winreg.REG_DWORD, 0)
+        _winreg.CloseKey(registry_key)
 
     def _check_url_list(self):
         try:
@@ -118,6 +128,8 @@ class IE(Package):
             # The default debug level generates way too much noise
             comtypes.logger.setLevel(logging.INFO)
 
+            random.shuffle(self._url_queue)
+
             # Overrule the default check method with a custom implementation that executes the url list queue
             self.check = self._check_url_list
         else:
@@ -145,7 +157,7 @@ class IE(Package):
             # Some sites have crap in their title
             website_title = open_tab.LocationName.encode('ascii', errors='backslashreplace')
 
-            log.debug("Found tab: " + website_title)
+            # log.debug("Found tab: " + website_title)
 
             if open_tab.LocationURL not in self._open_tab_data:
                 self._open_tab_data[open_tab.LocationURL] = {
@@ -194,25 +206,28 @@ class IE(Package):
             log.info("Create new Internet Explorer window")
 
             iexplore = self.get_path("Internet Explorer")
-            return self.execute(iexplore, "\"%s\"" % url)
+            return self.execute(iexplore, "-noframemerging \"%s\"" % url)
         else:
-            for i in range(self._get_open_tab_count()):
-                ie_com_object = self._get_shell_windows_object().Item(i)
+            # for i in range(self._get_open_tab_count()):
+            #     ie_com_object = self._get_shell_windows_object().Item(i)
+            #
+            #     if not ie_com_object:
+            #         continue
+            #
+            #     # IWebBrowser2.Navigate() is a blocking COM call and require the full startup of the child process.
+            #     # As this depends on the confirmation of the PipeServer that is waiting on the release of
+            #     # PROCESS_LOCK this results in a deadlock.
+            #     thread.start_new_thread(self._nav_to_url, (url,))
+            #
+            #     return False
+            #
+            # log.warning("Window not found; create a new one")
+            #
+            # # This should NEVER happen. But for some reason, we failed to find a valid reference to an existing IE window
+            # return self._open_new_tab(url, True)
 
-                if not ie_com_object:
-                    continue
-
-                # IWebBrowser2.Navigate() is a blocking COM call and require the full startup of the child process.
-                # As this depends on the confirmation of the PipeServer that is waiting on the release of
-                # PROCESS_LOCK this results in a deadlock.
-                thread.start_new_thread(self._nav_to_url, (url,))
-
-                return False
-
-            log.warning("Window not found; create a new one")
-
-            # This should NEVER happen. But for some reason, we failed to find a valid reference to an existing IE window
-            return self._open_new_tab(url, True)
+            iexplore = self.get_path("Internet Explorer")
+            return self.execute(iexplore, "-noframemerging \"%s\"" % url)
 
     @staticmethod
     def _status_for_readystate(readystate):
