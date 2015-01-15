@@ -343,6 +343,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         print http_verb + " " + http_url
+        self.event_handler.on_http_request(process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
 
     @staticmethod
     def __process_unknown_event(process_id, category, status, return_value, timestamp, thread_id, repeated, api,
@@ -641,36 +642,59 @@ class GraphGenerator(AbstractProcessAnalyser):
     id_counter = 0
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
+        print "GRAPH: on_new_process(%s, %s, %s, %s)" % (parent_id, process_name, process_id, first_seen)
         # Check if parent process exists in graph
         try:
+            print "GRAPH: finding process parent..."
             parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_new_process")
+            print "GRAPH: at least it didn't crash..."
             if len(parents) == 1:
+                print "GRAPH: Found the parent!"
                 parent = parents[0]
+                print "GRAPH: hmm k"
                 self.graph.add_vertex()
+                print "GRAPH: hmm k"
                 vertex_id = len(self.graph.vs) - 1
+                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["id"] = self.id_counter
+                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["pid"] = process_id
+                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["thread_id"] = 0
+                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["type"] = "on_new_process"
-                self.graph.vs[vertex_id]["label"] = "Process: " + process_id
+                print "GRAPH: hmm k, yup dit deed ie nog"
+                self.graph.vs[vertex_id]["label"] = "Process: " + str(process_id)
+                print "GRAPH: hmm k en dit niet"
                 self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
+                print "GRAPH: hmm k"
+
+                print "GRAPH: Created vertex of new process"
 
                 # Distinguish between Tab processes and process spawned in tabs
                 # If it's a tab process then the name is "iexplore.exe" AND
                 # the parent vertex has no incoming edges
-                if parent.index == 0 and process_name == "iexplore.exe":
+                if parent.index == 0 and parent["data"]["name"] == "Cuckoo Analyzer":
+                    print "GRAPH: The parent is the root and it's process name is 'Cuckoo Analyzer'"
                     # It's a tab process, hang it below the parent
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
                 elif parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) > 0:
+                    print "GRAPH: parent heeft de naam 'iexplore.exe' en heeft incoming edges"
                     # It's a process spawned by a tab
                     # Hang it below the latest GET from this tab
                     latest_get_from_tab = find_latest_get_from_tab(parent_id) 
                     self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
                 elif parent["data"]["name"] != "iexplore.exe":
+                    print "GRAPH: parent is geen tabje..."
                     # Hang it directly below this process
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
+                else:
+                    print "GRAPH: Oh oh, I didn't cover this case..."
+            else:
+                print "GRAPH: Found more than one parent, say wut..."
         except:
             # The Graph is empty
+            print "GRAPH: graph is empty..."
 
             # Make root node
             self.graph.add_vertex()
@@ -698,7 +722,8 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.id_counter += 1
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
-        pass
+        print "GRAPH: on_http_request(%s, %s, %s, %s, %s, %s)" % (process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
+        #pass
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -709,7 +734,10 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
         self.graph.vs[vertex_id]["data"] = {"request":http_request_data,"response":http_response_data}
 
-        if not process_id in latest_get_per_process:
+        print self.first_get_of_process
+        print self.latest_get_per_process
+        if not process_id in self.latest_get_per_process:
+            print "GRAPH: There hasn't been an HTTP request yet"
             # There hasn't been an HTTP Request yet...
             # Hang it below the "on_new_process"
 
@@ -721,12 +749,14 @@ class GraphGenerator(AbstractProcessAnalyser):
                 # Create edge
                 self.graph.add_edges([(int(parent.index), int(vertex_id))])
             
+            self.first_get_of_process[process_id] = self.id_counter
         else:
+            print "GRAPH: There was already an HTTP Request"
             # There was already a HTTP Request
             # Hang it below this first HTTP Request
             
             # Find that first HTTP request
-            uid = first_get_of_process[process_id]
+            uid = self.first_get_of_process[process_id]
             vertexseq = self.graph.vs.select(id_eq=uid)
             if len(vertexseq) == 1:
                 first_http = vertexseq[0]
@@ -736,7 +766,7 @@ class GraphGenerator(AbstractProcessAnalyser):
                         
 
         # Update dict met laatste HTTP request
-        latest_get_per_process[process_id] = self.id_counter
+        self.latest_get_per_process[process_id] = self.id_counter
         self.id_counter += 1
                 
     def on_new_url_in_tab(self):
