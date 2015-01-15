@@ -353,6 +353,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_shell_execute(self, process_id, thread_id, command):
         print "SHELL COMMAND: %s" % command
+        self.event_handler.on_shell_execute(process_id, thread_id, command)
         # super(AggregateProcessAnalyser, self).on_shell_execute()
 
     def on_file_write(self, process_id, thread_id, path, data, offset):
@@ -626,7 +627,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             process_spawned = arguments["ProcessSpawned"]
             working_directory = arguments["WorkingDirectory"]
             shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
-            self.on_shell_execute(shell_command)
+            self.on_shell_execute(process_id, thread_id, shell_command)
         else:
             print api
 
@@ -808,17 +809,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
-        if process_id in self.latest_get_per_process:
-            uid = self.latest_get_per_process[process_id]
-            vertexseq = self.graph.vs.select(id_eq=uid)
-            if len(vertexseq) == 1:
-                get_request = vertexseq[0]
-                self.graph.add_edges([(int(get_request.index), int(vertex_id))])
-        else:
-            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
-            if len(parents) == 1:
-                parent = parents[0]
-                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+        self.put_under_http_or_process(process_id, vertex_id)
 
         self.id_counter += 1
 
@@ -835,24 +826,14 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
-        if process_id in self.latest_get_per_process:
-            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
-            if len(parents) == 1:
-                parent = parents[0]
-                self.graph.add_edges([(int(parent.index), int(vertex_id))])
-        else:
-            uid = self.latest_get_per_process[process_id]
-            vertexseq = self.graph.vs.select(id_eq=uid)
-            if len(vertexseq) == 1:
-                get_request = vertexseq[0]
-                self.graph.add_edges([(int(get_request.index), int(vertex_id))])
+        self.put_under_http_or_process(process_id, vertex_id)
 
         self.id_counter += 1
 
     def on_socket_connect(self):
         pass
 
-    def on_shell_execute(self):
+    def on_shell_execute(self, process_id, thread_id, command):
         pass
                 
     def find_latest_get_from_tab(self, pid):
@@ -863,6 +844,20 @@ class GraphGenerator(AbstractProcessAnalyser):
         else:
             raise Exception("Unique ID not found")
 
+    def put_under_http_or_process(self, process_id, vertex_id):
+        # HTTP Request already exists
+        if process_id in self.latest_get_per_process:
+            uid = self.latest_get_per_process[process_id]
+            vertexseq = self.graph.vs.select(id_eq=uid)
+            if len(vertexseq) == 1:
+                get_request = vertexseq[0]
+                self.graph.add_edges([(int(get_request.index), int(vertex_id))])
+        else: # No HTTP Request has been seen for this process :(
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            if len(parents) == 1:
+                parent = parents[0]
+                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+ 
     def get_graph(self):
         return self.graph
 
