@@ -318,6 +318,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
+        self.event_handler.on_registry_set(process_id, thread_id, key, value) 
         # super(AggregateProcessAnalyser, self).on_registry_set()
 
     def on_registry_delete(self, process_id, thread_id, key):
@@ -762,6 +763,72 @@ class GraphGenerator(AbstractProcessAnalyser):
         # Update dict met laatste HTTP request
         self.latest_get_per_process[process_id] = self.id_counter
         self.id_counter += 1
+
+    def on_file_write(self):
+        pass
+
+    def on_file_delete(self, event):
+        pass
+
+    def on_registry_set(self, process_id, thread_id, key, value):
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_registry_set"
+        self.graph.vs[vertex_id]["label"] = key + " = " + value
+        self.graph.vs[vertex_id]["data"] = {}
+
+        # Put it under the latest HTTP Request
+        # or directly under the process if there was no HTTP Request
+        if process_id in self.latest_get_per_process:
+            uid = self.latest_get_per_process[process_id]
+            vertexseq = self.graph.vs.select(id_eq=uid)
+            if len(vertexseq) == 1:
+                get_request = vertexseq[0]
+                self.graph.add_edges([(int(get_request.index), int(vertex_id))])
+        else:
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            if len(parents) == 1:
+                parent = parents[0]
+                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+
+        self.id_counter += 1
+
+    def on_registry_delete(self, process_id, thread_id, key):
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_registry_delete"
+        self.graph.vs[vertex_id]["label"] = "DELETE" + key
+        self.graph.vs[vertex_id]["data"] = {}
+
+        # Put it under the latest HTTP Request
+        # or directly under the process if there was no HTTP Request
+        if process_id in self.latest_get_per_process:
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            if len(parents) == 1:
+                parent = parents[0]
+                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+        else:
+            uid = self.latest_get_per_process[process_id]
+            vertexseq = self.graph.vs.select(id_eq=uid)
+            if len(vertexseq) == 1:
+                get_request = vertexseq[0]
+                self.graph.add_edges([(int(get_request.index), int(vertex_id))])
+
+        self.id_counter += 1
+
+    def on_socket_connect(self):
+        pass
+
+    def on_shell_execute(self):
+        pass
                 
     def find_latest_get_from_tab(self, pid):
         uid = latest_get_per_process[pid]
