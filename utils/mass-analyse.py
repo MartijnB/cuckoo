@@ -8,8 +8,6 @@ import os
 import sys
 import time
 
-from igraph import *
-
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
 
@@ -23,12 +21,20 @@ from lib.cuckoo.core.startup import init_modules
 from lib.cuckoo.common.colors import bold, red, green, yellow
 
 
+def parse_handle(handle):
+    if isinstance(handle, (str, unicode)) and handle[:2] == "0x":
+        return int(handle, 16)
+    else:
+        return int(handle)
+
+
 class AbstractProcessAnalyser(object):
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         '''Call this when a new process spawns'''
         pass
 
-    def on_api_call(self, call_data, pid):
+    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+                    call_id):
         '''Call this for every event that happens.
                    event: expects a call dict
                    pid: the pid where the call happened'''
@@ -52,11 +58,332 @@ class AbstractProcessAnalyser(object):
     def on_socket_connect(self):
         pass
 
-    def on_new_process(self):
-        pass
-
     def on_shell_execute(self):
         pass
+
+
+class UnknownApiCallException(Exception):
+    pass
+
+
+class ApiStateException(Exception):
+    pass
+
+
+class AggregateProcessAnalyser(AbstractProcessAnalyser):
+    def __init__(self, event_handler):
+        self.event_handler = event_handler
+
+    def on_new_process(self, parent_id, process_name, process_id, first_seen):
+        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
+
+        log.info("New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id))
+
+    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+                    call_id):
+        # Ignore failed calls
+        if not status:
+            return
+
+        if category == "network":
+            callback = self.__process_network_event
+        elif category == "socket":
+            callback = self.__process_socket_event
+        elif category == "filesystem":
+            callback = self.__process_filesystem_event
+        elif category == "hooking":
+            callback = self.__process_ignored_event
+        elif category == "registry":
+            callback = self.__process_registry_event
+        elif category == "threading":
+            callback = self.__process_ignored_event
+        elif category == "process":
+            callback = self.__process_ignored_event
+        elif category == "system":
+            callback = self.__process_system_event
+        elif category == "synchronization":
+            callback = self.__process_ignored_event
+        elif category == "device":
+            callback = self.__process_ignored_event
+        elif category == "services":
+            callback = self.__process_ignored_event
+        else:
+            callback = self.__process_unknown_event
+
+        callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
+
+    def on_file_delete(self):
+        super(AggregateProcessAnalyser, self).on_file_delete()
+
+    def on_registry_set(self):
+        super(AggregateProcessAnalyser, self).on_registry_set()
+
+    def on_registry_delete(self):
+        super(AggregateProcessAnalyser, self).on_registry_delete()
+
+    def on_shell_execute(self):
+        super(AggregateProcessAnalyser, self).on_shell_execute()
+
+    def on_file_write(self):
+        super(AggregateProcessAnalyser, self).on_file_write()
+
+    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
+        print "Connect to " + ip + ":" + str(port)
+
+    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+        print http_verb + " " + http_url
+
+    @staticmethod
+    def __process_unknown_event(process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+                                arguments, call_id):
+        raise UnknownApiCallException("Unknown API category: " + category)
+
+    @staticmethod
+    def __process_ignored_event(process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+                                arguments, call_id):
+        pass
+
+    def __process_registry_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+                                 arguments, call_id):
+        pass
+
+    def __process_socket_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+                               arguments, call_id):
+        __socket_state = self.__get_state_for_pid(process_id)["socket"]
+
+        if api == "socket":
+            socket_id = parse_handle(return_value)
+
+            if socket_id in __socket_state["sockets"]:
+                # raise ApiStateException("Socket {0} is already created in this process!".format(socket_id))
+                print "Socket {0} is already created in this process!".format(socket_id)
+                return
+
+            __socket_state["sockets"].append(socket_id)
+        elif api == "connect":
+            socket_id = parse_handle(arguments["socket"])
+
+            if socket_id not in __socket_state["sockets"]:
+                raise ApiStateException("Socket {0} is not yet created in this process!".format(socket_id))
+
+            self.on_socket_connect(process_id, thread_id, socket_id, arguments["ip"], int(arguments["port"]))
+        elif api == "closesocket" or api == "shutdown":
+            socket_id = parse_handle(arguments["socket"])
+
+            if socket_id not in __socket_state["sockets"]:
+                raise ApiStateException("Socket {0} is not yet created in this process!".format(socket_id))
+
+            __socket_state["sockets"].remove(socket_id)
+
+    def __process_network_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+                                arguments, call_id):
+        __network_state = self.__get_state_for_pid(process_id)["network"]
+
+        if api == "InternetOpenW":
+            handle = parse_handle(return_value)
+
+            if handle in __network_state["handles"]:
+                raise ApiStateException("InternetHandle {0} for this process exists already!".format(handle))
+
+            # print "InternetHandle {0}".format(handle)
+
+            __network_state["handles"].append(handle)
+            __network_state["handle_state"][handle] = {
+                "type": "internet",
+                "session_handles": []
+            }
+        elif api == "InternetConnectW":
+            internet_handle = parse_handle(arguments["InternetHandle"])
+            session_handle = parse_handle(return_value)
+
+            if internet_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][internet_handle]["type"] != "internet":
+                raise ApiStateException("InternetHandle {0} for this process does not exist!".format(internet_handle))
+
+            if session_handle in __network_state["handles"]:
+                # raise ApiStateException("SessionHandle {0} for this process exists already!".format(session_handle))
+                print "SessionHandle {0} for this process exists already!".format(session_handle)
+                print __network_state["handle_state"][session_handle]
+                return
+
+            # print "SessionHandle {0}".format(session_handle)
+
+            __network_state["handles"].append(session_handle)
+            __network_state["handle_state"][internet_handle]["session_handles"].append(session_handle)
+            __network_state["handle_state"][session_handle] = {
+                "internet_handle": internet_handle,
+                "type": "session",
+                "request_handles": [],
+                "server_name": arguments["ServerName"],
+                "server_port": int(arguments["ServerPort"])
+            }
+        elif api == "HttpOpenRequestW":
+            session_handle = parse_handle(arguments["InternetHandle"])
+            request_handle = parse_handle(return_value)
+
+            if session_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][session_handle]["type"] != "session":
+                # raise ApiStateException("SessionHandle {0} for this process does not exist!".format(session_handle))
+                print "SessionHandle {0} for this process does not exist!".format(session_handle)
+                return
+
+            if request_handle in __network_state["handles"]:
+                # raise ApiStateException("RequestHandle {0} for this process exists already!".format(request_handle))
+                print "RequestHandle {0} for this process exists already!".format(request_handle)
+                return
+
+            # print "RequestHandle {0}".format(request_handle)
+
+            __network_state["handles"].append(request_handle)
+            __network_state["handle_state"][session_handle]["request_handles"].append(request_handle)
+            __network_state["handle_state"][request_handle] = {
+                "session_handle": session_handle,
+                "type": "request",
+                "path": arguments["Path"],
+                "verb": arguments["Verb"],
+                "referer": arguments["Referer"],
+                "data": ""
+            }
+        elif api == "InternetCloseHandle":
+            handle = parse_handle(arguments["InternetHandle"])
+
+            if handle not in __network_state["handles"]:
+                # raise ApiStateException("Handle {0} for this process does not exist!".format(handle))
+                print "Handle {0} for this process does not exist!".format(handle)
+                return
+
+            if __network_state["handle_state"][handle]["type"] == "request":
+                session_handle = __network_state["handle_state"][handle]["session_handle"]
+
+                if session_handle not in __network_state["handles"]:
+                    # raise ApiStateException("The SessionHandle {0} of the Handle {1} for this process does not exist!".
+                    # format(__network_state["handle_state"][handle]["session_handle"], handle))
+                    print "The SessionHandle {0} of the Handle {1} for this process does not exist!".format(
+                        __network_state["handle_state"][handle]["session_handle"], handle)
+                    return
+
+                protocol_handler = "http://"
+                if __network_state["handle_state"][session_handle]["server_port"] == 443:
+                    protocol_handler = "https://"
+
+                http_verb = __network_state["handle_state"][handle]["verb"]
+                http_url = protocol_handler + \
+                           __network_state["handle_state"][session_handle]["server_name"] + ":" + \
+                           str(__network_state["handle_state"][session_handle]["server_port"]) + \
+                           __network_state["handle_state"][handle]["path"]
+                http_response_data = __network_state["handle_state"][handle]["data"]
+
+                if __network_state["handle_state"][session_handle]["server_port"] == 0 \
+                        or __network_state["handle_state"][session_handle]["server_port"] == 80 \
+                        or __network_state["handle_state"][session_handle]["server_port"] == 443:
+                    http_url = protocol_handler + \
+                               __network_state["handle_state"][session_handle]["server_name"] + \
+                               __network_state["handle_state"][handle]["path"]
+
+                self.on_http_request(process_id, thread_id, http_verb, http_url, None, http_response_data)
+
+            # print "CloseHandle {0} ({1})".format(handle, __network_state["handle_state"][handle]["type"])
+
+            __network_state["handles"].remove(handle)
+            del __network_state["handle_state"][handle]
+        elif api == "InternetReadFile":
+            request_handle = parse_handle(arguments["InternetHandle"])
+
+            if request_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][request_handle]["type"] != "request":
+                # raise ApiStateException("SessionHandle {0} for this process does not exist!".format(session_handle))
+                print "RequestHandle {0} for this process does not exist!".format(request_handle)
+                return
+
+            __network_state["handle_state"][request_handle]["data"] = \
+                __network_state["handle_state"][request_handle]["data"] + arguments["Buffer"]
+        elif api == "InternetReadFileExW":
+            request_handle = parse_handle(arguments["InternetHandle"])
+
+            if request_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][request_handle]["type"] != "request":
+                # raise ApiStateException("SessionHandle {0} for this process does not exist!".format(session_handle))
+                print "RequestHandle {0} for this process does not exist!".format(request_handle)
+                return
+
+            __network_state["handle_state"][request_handle]["data"] = \
+                __network_state["handle_state"][request_handle]["data"] + arguments["Buffer"]
+
+    def __process_filesystem_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+                                   api, arguments, call_id):
+        __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
+
+        if api == "NtCreateFile":
+            file_handle = parse_handle(arguments["FileHandle"])
+
+            if file_handle in __filesystem_state["handles"]:
+                # raise ApiStateException("FileHandle {0} is already created in this process!".format(file_handle))
+                print "FileHandle {0} is already created in this process!".format(file_handle)
+                return
+
+            __filesystem_state["handles"].append(file_handle)
+            __filesystem_state["handle_state"][file_handle] = {
+                "path": arguments["FileName"]
+            }
+        elif api == "NtOpenFile":
+            file_handle = parse_handle(arguments["FileHandle"])
+
+            if file_handle in __filesystem_state["handles"]:
+                # raise ApiStateException("FileHandle {0} is already created in this process!".format(file_handle))
+                print "FileHandle {0} is already created in this process!".format(file_handle)
+                return
+
+            __filesystem_state["handles"].append(file_handle)
+            __filesystem_state["handle_state"][file_handle] = {
+                "path": arguments["FileName"]
+            }
+        elif api == "DeleteFileA" or api == "DeleteFileW":
+            file_path = arguments["FileName"]
+
+            self.on_file_delete(file_path)
+        else:
+            print api
+
+    def __process_system_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+                                   api, arguments, call_id):
+        __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
+
+        if api == "NtClose":
+            file_handle = parse_handle(arguments["Handle"])
+
+            if file_handle not in __filesystem_state["handles"]: # Not all NtClose calls are related to the FS
+                #raise ApiStateException("Handle {0} is not yet created in this process!".format(file_handle))
+                return
+
+            __filesystem_state["handles"].remove(file_handle)
+            del __filesystem_state["handle_state"][file_handle]
+        else:
+            print api
+
+
+    __state = {}
+
+    def __get_state_for_pid(self, process_id):
+        if process_id not in self.__state:
+            self.__state[process_id] = {
+                "filesystem": {
+                    "handles": [],
+                    "handle_state": {}
+                },
+                "network": {
+                    "handles": [],
+                    "handle_state": {}
+                },
+                "socket": {
+                    "sockets": []
+                }
+            }
+
+        return self.__state[process_id]
+
+
+class GraphGenerator(AbstractProcessAnalyser):
+    pass
 
 
 class LogProcessorException(Exception):
@@ -154,26 +481,19 @@ class JSONLogProcessor(AbstractLogProcessor):
 
 class DAGLogProcessorEventHandler(AbstractLogProcessorEventHandler):
     def __init__(self, dag_event_handler):
-        self.dag_event_handler = dag_event_handler
+        self.event_handler = dag_event_handler
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        log.info("New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id))
-
-        self.dag_event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
+        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
 
     def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
                     call_id):
-        self.dag_event_handler.on_api_call({
-                                               "category": category,
-                                               "status": status,
-                                               "return": return_value,
-                                               "timestamp": timestamp,
-                                               "thread_id": thread_id,
-                                               "repeated": repeated,
-                                               "api": api,
-                                               "arguments": arguments,
-                                               "id": call_id
-                                           }, process_id)
+        new_arguments = {}
+        for arg in arguments:
+            new_arguments[arg["name"]] = arg["value"]
+
+        self.event_handler.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated,
+                                       api, new_arguments, call_id)
 
 
 def main():
@@ -252,18 +572,10 @@ def main():
 
     log.info("Parse log....")
 
-    dag_event_handler = Thread_Based_DAG_Generator()
-
-    log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(dag_event_handler))
+    log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(AggregateProcessAnalyser(GraphGenerator())))
 
     while log_processor.has_more_events():
         log_processor.parse_events()
-
-    graph = dag_event_handler.no_more_events()
-    graph.vs["label"] = graph.vs["pid"]
-    # layout_graph = graph.layout("rt")
-    layout_graph = graph.layout("kk")
-    plot(graph, "~/Desktop/amazing.png", bbox=(9999, 9999), layout=layout_graph)
 
 
 if __name__ == "__main__":
