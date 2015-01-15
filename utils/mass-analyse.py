@@ -304,8 +304,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         print "REGISTRY DELETE: %s" % key
         #super(AggregateProcessAnalyser, self).on_registry_delete()
 
-    def on_shell_execute(self):
-        super(AggregateProcessAnalyser, self).on_shell_execute()
+    def on_shell_execute(self, command):
+        print "SHELL COMMAND: %s" % command
+        #super(AggregateProcessAnalyser, self).on_shell_execute()
 
     def on_file_write(self):
         super(AggregateProcessAnalyser, self).on_file_write()
@@ -546,6 +547,11 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
             __filesystem_state["handles"].remove(file_handle)
             del __filesystem_state["handle_state"][file_handle]
+        elif api == "ShellExecuteExA" or api == "ShellExecuteExW":
+            process_spawned = arguments["ProcessSpawned"]
+            working_directory = arguments["WorkingDirectory"]
+            shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
+            self.on_shell_execute(shell_command)
         else:
             print api
 
