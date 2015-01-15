@@ -8,6 +8,7 @@ import os
 import sys
 import time
 
+from igraph import *
 import pprint
 
 logging.basicConfig(level=logging.INFO)
@@ -631,14 +632,18 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
 
 class GraphGenerator(AbstractProcessAnalyser):
+    # The Graph :D
     graph = Graph()
+
+    # Dictionaries to make lookups in the graph a lot faster
     latest_get_per_process = {} # Process ID -> Unique ID
+    first_get_of_process = {} # Process ID -> Unique ID
     id_counter = 0
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         # Check if parent process exists in graph
         try:
-            parents = self.graph.vs.select(pid_eq=parent_id)
+            parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_new_process")
             if len(parents) == 1:
                 parent = parents[0]
                 self.graph.add_vertex()
@@ -653,7 +658,7 @@ class GraphGenerator(AbstractProcessAnalyser):
                 # Distinguish between Tab processes and process spawned in tabs
                 # If it's a tab process then the name is "iexplore.exe" AND
                 # the parent vertex has no incoming edges
-                if parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) == 0:
+                if parent.index == 0 and process_name == "iexplore.exe":
                     # It's a tab process, hang it below the parent
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
                 elif parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) > 0:
@@ -666,21 +671,76 @@ class GraphGenerator(AbstractProcessAnalyser):
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
         except:
             # The Graph is empty
+
+            # Make root node
             self.graph.add_vertex()
             self.graph.vs[0]["id"] = id_counter
-            self.graph.vs[0]["pid"] = process_id
+            self.graph.vs[0]["pid"] = parent_id
             self.graph.vs[0]["thread_id"] = 0
             self.graph.vs[0]["type"] = "on_new_process"
-            self.graph.vs[0]["label"] = "Process: " + process_id 
-            self.graph.vs[0]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
+            self.graph.vs[0]["label"] = "Process: " + parent_id 
+            self.graph.vs[0]["data"] = {"name":"Cuckoo Analyzer","timestamp":first_seen,"parent_id":0}
+            id_counter += 1
+
+            # Make node of the tab/window
+            self.graph.add_vertex()
+            self.graph.vs[1]["id"] = id_counter
+            self.graph.vs[1]["pid"] = process_id
+            self.graph.vs[1]["thread_id"] = 0
+            self.graph.vs[1]["type"] = "on_new_process"
+            self.graph.vs[1]["label"] = "Process: " + process_id
+            self.graph.vs[1]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
+
+            # Create edge from root node to tab/window process
+            self.graph.add_edges([(0, 1)])
+            
 
         id_counter += 1
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
-        pass
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_http_request"
+        self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
+        self.graph.vs[vertex_id]["data"] = {"request":http_request_data,"response":http_response_data}
+
+        if not process_id in latest_get_per_process:
+            # There hasn't been an HTTP Request yet...
+            # Hang it below the "on_new_process"
+
+            # Lookup "on_new_process" met dezelfde process_id
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            if len(parents) == 1:
+                parent = parents[0]
+                
+                # Create edge
+                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+            
+        else:
+            # There was already a HTTP Request
+            # Hang it below this first HTTP Request
+            
+            # Find that first HTTP request
+            uid = first_get_of_process[process_id]
+            vertexseq = self.graph.vs.select(id_eq=uid)
+            if len(vertexseq) == 1:
+                first_http = vertexseq[0]
+                
+                # Created edge
+                self.graph.add_edges([(int(first_http.index), int(vertex_id))])
+                        
+
+        # Update dict met laatste HTTP request
+        latest_get_per_process[process_id] = id_counter
+        id_counter += 1
                 
     def on_new_url_in_tab(self):
         #super(AggregateProcessAnalyser, self).on_new_url_in_tab()
+        pass
 
 
     def find_latest_get_from_tab(self, pid):
