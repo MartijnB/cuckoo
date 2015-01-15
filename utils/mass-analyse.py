@@ -651,9 +651,10 @@ class GraphGenerator(AbstractProcessAnalyser):
         id_counter += 1
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+        pass
                 
     def on_new_url_in_tab(self):
-        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
+        #super(AggregateProcessAnalyser, self).on_new_url_in_tab()
 
 
     def find_latest_get_from_tab(self, pid):
@@ -664,6 +665,8 @@ class GraphGenerator(AbstractProcessAnalyser):
         else:
             raise Exception("Unique ID not found")
 
+    def get_graph():
+        return self.graph
 
 class LogProcessorException(Exception):
     pass
