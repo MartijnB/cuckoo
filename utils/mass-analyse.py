@@ -239,6 +239,9 @@ class AbstractProcessAnalyser(object):
                    pid: the pid where the call happened'''
         pass
 
+    def on_new_url_in_tab(self):
+        pass
+
     def on_http_request(self):
         pass
 
@@ -315,15 +318,19 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def on_file_delete(self, event):
         super(AggregateProcessAnalyser, self).on_file_delete(event)
 
+    def on_new_url_in_tab(self):
+        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
+
     def on_registry_set(self, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
         # super(AggregateProcessAnalyser, self).on_registry_set()
 
-    def on_registry_delete(self, key):
+    def on_registry_delete(self, process_id, thread_id, key):
         print "REGISTRY DELETE: %s" % key
+        self.event_handler.on_registry_delete 
         # super(AggregateProcessAnalyser, self).on_registry_delete()
 
-    def on_shell_execute(self, command):
+    def on_shell_execute(self, process_id, thread_id, command):
         print "SHELL COMMAND: %s" % command
         # super(AggregateProcessAnalyser, self).on_shell_execute()
 
@@ -624,7 +631,64 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
 
 class GraphGenerator(AbstractProcessAnalyser):
-    pass
+    graph = Graph()
+    latest_get_per_process = {} # Process ID -> Unique ID
+    id_counter = 0
+
+    def on_new_process(self, parent_id, process_name, process_id, first_seen):
+        # Check if parent process exists in graph
+        try:
+            parents = self.graph.vs.select(pid_eq=parent_id)
+            if len(parents) == 1:
+                parent = parents[0]
+                self.graph.add_vertex()
+                vertex_id = len(self.graph.vs) - 1
+                self.graph.vs[vertex_id]["id"] = id_counter
+                self.graph.vs[vertex_id]["pid"] = process_id
+                self.graph.vs[vertex_id]["thread_id"] = 0
+                self.graph.vs[vertex_id]["type"] = "on_new_process"
+                self.graph.vs[vertex_id]["label"] = "Process: " + process_id
+                self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
+
+                # Distinguish between Tab processes and process spawned in tabs
+                # If it's a tab process then the name is "iexplore.exe" AND
+                # the parent vertex has no incoming edges
+                if parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) == 0:
+                    # It's a tab process, hang it below the parent
+                    self.graph.add_edges([(int(parent.index), int(vertex_id))])
+                elif parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) > 0:
+                    # It's a process spawned by a tab
+                    # Hang it below the latest GET from this tab
+                    latest_get_from_tab = find_latest_get_from_tab(parent_id) 
+                    self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
+                elif parent["data"]["name"] != "iexplore.exe":
+                    # Hang it directly below this process
+                    self.graph.add_edges([(int(parent.index), int(vertex_id))])
+        except:
+            # The Graph is empty
+            self.graph.add_vertex()
+            self.graph.vs[0]["id"] = id_counter
+            self.graph.vs[0]["pid"] = process_id
+            self.graph.vs[0]["thread_id"] = 0
+            self.graph.vs[0]["type"] = "on_new_process"
+            self.graph.vs[0]["label"] = "Process: " + process_id 
+            self.graph.vs[0]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
+
+        id_counter += 1
+
+    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+                
+    def on_new_url_in_tab(self):
+        super(AggregateProcessAnalyser, self).on_new_url_in_tab()
+
+
+    def find_latest_get_from_tab(self, pid):
+        uid = latest_get_per_process[pid]
+        matches = self.graph.vs.select(id_eq=uid)
+        if len(matches) == 1:
+            return matches[0]
+        else:
+            raise Exception("Unique ID not found")
 
 
 class LogProcessorException(Exception):
