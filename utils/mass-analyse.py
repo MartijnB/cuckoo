@@ -20,6 +20,146 @@ from lib.cuckoo.core.database import TASK_REPORTED, TASK_FAILED_ANALYSIS, TASK_F
 from lib.cuckoo.core.startup import init_modules
 from lib.cuckoo.common.colors import bold, red, green, yellow
 
+class Registry_Event_Handler(object):
+    registry = {}
+
+	# Nasty code incoming
+    def on_api_call(self, call, pid):
+        if not registry.has_key(pid):
+            registry[pid] = {
+                "reg_keys_created": {},
+                "reg_keys_deleted": {},
+                "reg_keys_values" : {},
+                "reg_keys_process_handle": {},
+                "predefined_key_handle": {
+                        "0x80000000":"HKEY_CLASSES_ROOT",
+                        "0x80000001":"HKEY_CURRENT_USER",
+                        "0x80000002":"HKEY_LOCAL_MACHINE",
+                        "0x80000003":"HKEY_USERS",
+                        "0x80000004":"HKEY_PERFORMANCE_DATA",
+                        "0x80000005":"HKEY_CURRENT_CONFIG",
+                        "0x80000006":"HKEY_DYN_DATA"
+                }
+            }
+        thread_id = call["thread_id"]
+        thread_id_ = thread_id + "_"
+        handle = ""
+        if get_argument_value(call["arguments"], "KeyHandle") != "":
+            handle = get_argument_value(call["arguments"], "KeyHandle")
+        else:
+            handle = get_argument_value(call["arguments"], "Handle")
+
+
+        # CREATING REGISTRY KEYS
+        if call["api"] == "NtCreateKey":
+            path = get_argument_value(call["arguments"], "ObjectAttributes")
+            registry[pid]["reg_keys_created"][path] = 1
+            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
+        elif call["api"] == "RegCreateKeyExA" or call["api"] == "RegCreateKeyExW":
+            subkey = get_argument_value(call["arguments"], "SubKey")
+            registry[pid]["reg_keys_created"][subkey] = 1
+            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+        # OPENING REGISTRY KEYS
+        elif call["api"] == "NtOpenKey":
+            path = get_argument_value(call["arguments"], "ObjectAttributes")
+            registry[pid]["reg_keys_created"][path] = 1
+            registry[pid]["reg_keys_process_handle"][call[thread_id_ + handle] = path
+        elif call["api"] == "NtOpenKeyEx":
+            path = get_argument_value(call["arguments"], "ObjectAttributes")
+            registry[pid]["reg_keys_created"][path] = 1
+            registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
+        elif call["api"] == "RegOpenKeyExA" or call["api"] == "RegOpenKeyExW":
+            registry = get_argument_value(call["arguments"], "Registry")
+            handle = get_argument_value(call["arguments"], "Handle")
+            subkey = get_argument_value(call["arguments"], "SubKey")
+            if registry in reg_keys_process_handle:
+                registry[pid]["reg_keys_created"][[reg_keys_process_handle[registry] + "\\\\" + subkey] = 1
+                reg_keys_process_handle[call["thread_id"] + "_" + handle] = predefined_key_handle[registry] + "\\\\" + subkey
+            else:
+                try:
+                    name = reg_keys_process_handle[call["thread_id"] + "_" + registry]
+                    reg_keys_created[name + "\\\\" + subkey] = 1
+                    reg_keys_process_handle[call["thread_id"] + "_" + handle] = reg_keys_process_handle[call["thread_id"] + "_" + registry] + "\\\\" + subkey
+                except:
+                    # Pech gehad
+                    if "RegOpenKeyEx" in anomalities:
+                        anomalities["RegOpenKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
+                    else:
+                        anomalities["RegOpenKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
+        # SETTING REGISTRY KEYS
+        elif call["api"] == "NtSetValueKey":
+            #print "%s NtSetValueKey: KeyHandle = %s, '%s' = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"), get_argument_value(call["arguments"], "ValueName"), get_argument_value(call["arguments"], "Buffer"))
+            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "KeyHandle")]
+            reg_keys_values[registry_name + "\\" + get_argument_value(call["arguments"], "ValueName")] = get_argument_value(call["arguments"], "Buffer")
+        elif call["api"] == "RegSetValueExA" or call["api"] == "RegSetValueExW":
+            #print "%s RegSetValueEx: KeyHandle = %s, '%s' = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "ValueName"), get_argument_value(call["arguments"], "Buffer"))
+            try:
+                registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
+                reg_keys_values[registry_name + "\\" + get_argument_value(call["arguments"], "ValueName")] = get_argument_value(call["arguments"], "Buffer")
+            except:
+                if "RegSetValueEx" in anomalities:
+                    anomalities["RegSetValueEx"].append("Could not find handle '" + get_argument_value(call["arguments"], "Handle") + " to safe', value = '"+get_argument_value(call["arguments"], "Buffer")+"'")
+                else:
+                    anomalities["RegSetValueEx"] = ["Could not find handle '" + get_argument_value(call["arguments"], "Handle") + " to safe', value = '"+get_argument_value(call["arguments"], "Buffer")+"'"]
+
+        # CLOSING REGISTRY KEYS
+        elif call["api"] == "RegCloseKey":
+            #print "%s RegCloseKey: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"))
+            if call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle") in reg_keys_process_handle:
+                del reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
+        # DELETING REGISTRY KEYS
+        elif call["api"] == "NtDeleteKey":
+            #print "%s NtDeleteKey: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"))
+            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "KeyHandle")] # Naam die bij handle hoort
+            reg_keys_deleted[registry_name] = 1
+        elif call["api"] == "RegDeleteKeyA":
+            #print "%s RegDeleteKeyA: KeyHandle = %s, SubKey = '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "SubKey"))
+            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")] # Naam die bij handle hoort
+            reg_keys_deleted[registry_name + "\\" + get_argument_value(call["arguments"], "SubKey")] = 1
+        elif call["api"] == "RegDeleteKeyW":
+            #print "%s RegDeleteKeyW: KeyHandle = %s" % (call["thread_id"], get_argument_value(call["arguments"], "KeyHandle"))
+            registry_name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")] # Naam die bij handle hoort
+            reg_keys_deleted[registry_name + "\\" + get_argument_value(call["arguments"], "SubKey")] = 1
+        elif call["api"] == "RegDeleteValueA" or call["api"] == "RegDeleteValueW":
+            print "%s RegDeleteValueA: KeyHandle = %s, '%s'" % (call["thread_id"], get_argument_value(call["arguments"], "Handle"), get_argument_value(call["arguments"], "ValueName"))
+            try:
+                name = reg_keys_process_handle[call["thread_id"] + "_" + get_argument_value(call["arguments"], "Handle")]
+            except:
+                name = get_argument_value(call["arguments"], "ValueName")
+            reg_keys_deleted[name + "\\" + get_argument_value(call["arguments"], "ValueName")] = 1
+
+
+class Detecter(object):
+    def analyze_graph(graph):
+        pass
+
+class Subprocess_from_tab(Detecter):
+    def analyze_graph(self, graph):
+        # Get all vertices of event "on_new_process"		
+        new_process_events = graph.vs.select(event_eq="on_new_process")
+        for vertex in new_process_events:
+            # Check process depth
+            depth = 0
+            parent = ""
+            while(parent = get_process_parent(process_event)):
+                depth += 1
+
+            if depth > 1:
+                # Oh oh, we found a process two levels deep or lower
+                # We should probably return some object which documents the malicious behavior
+                    # For Adriaan: Put a subgraph in the object ^ so that we can give a picture to the user (note "subgraph", so it's a very small one)
+                return "MALICIOUS BEHAVIOR DETECTED"
+
+    def get_process_parent(self, vertex):
+        neighbors = vertex.neighbors(vertex.index, mode=OUT)
+        good_neighbor = False
+        for neighbor in neighbors:
+            if neighbor["event"] == "on_new_process":
+                # We got a neighbor that is an event created by a process spawn
+                good_neighbor = neighbor
+                break
+        return good_neighbor
+			
 
 def parse_handle(handle):
     if isinstance(handle, (str, unicode)) and handle[:2] == "0x":
@@ -576,7 +716,6 @@ def main():
 
     while log_processor.has_more_events():
         log_processor.parse_events()
-
 
 if __name__ == "__main__":
     cfg = Config()
