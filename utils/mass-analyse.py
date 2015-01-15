@@ -834,7 +834,19 @@ class GraphGenerator(AbstractProcessAnalyser):
         pass
 
     def on_shell_execute(self, process_id, thread_id, command):
-        pass
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_shell_execute"
+        self.graph.vs[vertex_id]["label"] = command
+        self.graph.vs[vertex_id]["data"] = {"command":command}
+
+        self.put_under_http_or_process(process_id, vertex_id)
+        
+        self.id_counter += 1
                 
     def find_latest_get_from_tab(self, pid):
         uid = latest_get_per_process[pid]
