@@ -277,7 +277,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
 
-        log.info("New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id))
+        print "New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id)
 
     def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
                     call_id):
@@ -327,8 +327,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         print "SHELL COMMAND: %s" % command
         # super(AggregateProcessAnalyser, self).on_shell_execute()
 
-    def on_file_write(self):
-        super(AggregateProcessAnalyser, self).on_file_write()
+    def on_file_write(self, process_id, thread_id, path, data, offset):
+        print "Write data to {0}".format(path)
 
     def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
         print "Connect to " + ip + ":" + str(port)
@@ -381,7 +381,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             socket_id = parse_handle(arguments["socket"])
 
             if socket_id not in __socket_state["sockets"]:
-                raise ApiStateException("Socket {0} is not yet created in this process!".format(socket_id))
+                # raise ApiStateException("Socket {0} is not yet created in this process!".format(socket_id))
+                print "Socket {0} is not yet created in this process!".format(socket_id)
+                return
 
             __socket_state["sockets"].remove(socket_id)
 
@@ -533,7 +535,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
             __filesystem_state["handles"].append(file_handle)
             __filesystem_state["handle_state"][file_handle] = {
-                "path": arguments["FileName"]
+                "path": arguments["FileName"],
+                "data": "",
+                "offset": 0
             }
         elif api == "NtOpenFile":
             file_handle = parse_handle(arguments["FileHandle"])
@@ -545,8 +549,23 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
             __filesystem_state["handles"].append(file_handle)
             __filesystem_state["handle_state"][file_handle] = {
-                "path": arguments["FileName"]
+                "path": arguments["FileName"],
+                "data": "",
+                "offset": 0
             }
+        elif api == "NtWriteFile":
+            file_handle = parse_handle(arguments["FileHandle"])
+
+            if file_handle not in __filesystem_state["handles"]:
+                # raise ApiStateException("FileHandle {0} is already created in this process!".format(file_handle))
+                print "FileHandle {0} is already created in this process!".format(file_handle)
+                return
+
+            __filesystem_state["handle_state"][file_handle]["data"] = \
+                __filesystem_state["handle_state"][file_handle]["data"] + arguments["Buffer"]
+
+            if int(arguments["OffsetLowPart"]) > 0:
+                __filesystem_state["handle_state"][file_handle]["offset"] = int(arguments["OffsetLowPart"])
         elif api == "DeleteFileA" or api == "DeleteFileW":
             file_path = arguments["FileName"]
 
@@ -564,6 +583,13 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             if file_handle not in __filesystem_state["handles"]:  # Not all NtClose calls are related to the FS
                 # raise ApiStateException("Handle {0} is not yet created in this process!".format(file_handle))
                 return
+
+            if len(__filesystem_state["handle_state"][file_handle]["data"]) > 0:
+                self.on_file_write(process_id,
+                                   thread_id,
+                                   __filesystem_state["handle_state"][file_handle]["path"],
+                                   __filesystem_state["handle_state"][file_handle]["data"],
+                                   __filesystem_state["handle_state"][file_handle]["offset"])
 
             __filesystem_state["handles"].remove(file_handle)
             del __filesystem_state["handle_state"][file_handle]
