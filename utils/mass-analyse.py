@@ -36,7 +36,15 @@ class Registry_Event_Handler(object):
                 "reg_keys_created": {},
                 "reg_keys_deleted": {},
                 "reg_keys_values" : {},
-                "reg_keys_process_handle": {},
+                "reg_keys_process_handle": {
+                        "0x80000000":"HKEY_CLASSES_ROOT",
+                        "0x80000001":"HKEY_CURRENT_USER",
+                        "0x80000002":"HKEY_LOCAL_MACHINE",
+                        "0x80000003":"HKEY_USERS",
+                        "0x80000004":"HKEY_PERFORMANCE_DATA",
+                        "0x80000005":"HKEY_CURRENT_CONFIG",
+                        "0x80000006":"HKEY_DYN_DATA"
+                },
                 "predefined_key_handle": {
                         "0x80000000":"HKEY_CLASSES_ROOT",
                         "0x80000001":"HKEY_CURRENT_USER",
@@ -49,8 +57,6 @@ class Registry_Event_Handler(object):
             }
         thread_id_ = thread_id + "_"
         handle = ""
-        
-        #self.pp.pprint(arguments)
         if "KeyHandle" in arguments:
             handle = arguments["KeyHandle"]
         else:
@@ -65,8 +71,31 @@ class Registry_Event_Handler(object):
         elif api == "RegCreateKeyExA" or api == "RegCreateKeyExW":
             # TODO: We're working with a subkey, not the whole key, check registry value...
             subkey = arguments["SubKey"]
-            self.registry[pid]["reg_keys_created"][subkey] = 1
-            self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+            registry = arguments["Registry"]
+            print "REGISTRY RegCreateKeyEx: Handle = %s, Registry = %s, SubKey = %s" % (handle, registry, subkey)
+            if registry in self.registry[pid]["reg_keys_process_handle"]:
+                print "REGISTRY\t entry exists in reg_keys_process_handle"
+                print "REGISTRY\t voeg de key in ^ (is een van de predefined) toe aan de subkey en sla die op in created"
+                print "REGISTRY\t Zet de TID_Handle -> volledige key in reg_keys_process_handle"
+                self.registry[pid]["reg_keys_created"][self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
+                self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
+            else:
+                try:
+                    print "REGISTRY\t entry does NOT exist in reg_keys_process_handle, de registry key is dus niet predefined"
+                    print "REGISTRY\t Mogelijk is het dus opgeslagen uit vorige entries als TID_handle"
+                    name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry]
+                    self.registry[pid]["reg_keys_created"][name + r'\\' + subkey] = 1
+                    self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
+                except:
+                    # Pech gehad
+                    print "REGISTRY\t Pech gehad..."
+                    if "RegCreateKeyEx" in self.anomalities:
+                        self.anomalities["RegCreateKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
+                    else:
+                        self.anomalities["RegCreateKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
+
+            #self.registry[pid]["reg_keys_created"][subkey] = 1
+            #self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
 
         # OPENING REGISTRY KEYS
         elif api == "NtOpenKey":
