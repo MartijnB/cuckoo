@@ -28,7 +28,7 @@ from lib.common.defines import PIPE_READMODE_MESSAGE, PIPE_WAIT
 from lib.common.defines import PIPE_UNLIMITED_INSTANCES, INVALID_HANDLE_VALUE
 from lib.common.exceptions import CuckooError, CuckooPackageError
 from lib.common.hashing import hash_file
-from lib.common.results import upload_to_host
+from lib.common.results import upload_to_host, NetlogConnection
 from lib.core.config import Config
 from lib.core.packages import choose_package
 from lib.core.privileges import grant_debug_privilege
@@ -36,6 +36,7 @@ from lib.core.startup import create_folders, init_logging
 from modules import auxiliary
 
 log = logging.getLogger()
+log.setLevel(logging.WARNING)
 
 BUFSIZE = 512
 FILES_LIST = []
@@ -77,8 +78,8 @@ def add_pids(pids):
 def add_file(file_path):
     """Add a file to file list."""
     if file_path not in FILES_LIST:
-        log.info("Added new file to list with path: %s",
-                 unicode(file_path).encode("utf-8", "replace"))
+        # log.info("Added new file to list with path: %s",
+        #          unicode(file_path).encode("utf-8", "replace"))
         FILES_LIST.append(file_path)
 
 def dump_file(file_path):
@@ -398,7 +399,7 @@ class Analyzer:
     procedure, including handling of the pipe server, the auxiliary modules and
     the analysis packages.
     """
-    PIPE_SERVER_COUNT = 4
+    PIPE_SERVER_COUNT = 6
 
     def __init__(self):
         self.pipes = [None]*self.PIPE_SERVER_COUNT
@@ -674,7 +675,7 @@ class Analyzer:
                                 "an exception: %s", package_name, e)
             finally:
                 # Zzz.
-                KERNEL32.Sleep(1000)
+                KERNEL32.Sleep(250)
 
         # Create the shutdown mutex.
         KERNEL32.CreateMutexA(None, False, SHUTDOWN_MUTEX)
@@ -722,6 +723,33 @@ class Analyzer:
 
         # Let's invoke the completion procedure.
         self.complete()
+
+        #Hack to transfer bson files
+        import glob
+        import time
+
+        try:
+            for file in glob.glob('c:\\*.bson'):
+                #bson_data = open(file).read()
+
+                #print "Data len: " + str(len(bson_data))
+
+                con = NetlogConnection(proto="")
+                con.connect()
+
+                infd = open(file, "rb")
+                buf = infd.read(1024*1024)
+                while buf:
+                    con.send(buf)
+                    buf = infd.read(1024*1024)
+
+                # con.send(bson_data)
+                con.close()
+        except Exception as e:
+            print e
+            time.sleep(30)
+
+        time.sleep(10)
 
         return True
 
