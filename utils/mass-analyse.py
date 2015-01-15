@@ -180,9 +180,10 @@ class Subprocess_from_tab(Detecter):
         for vertex in new_process_events:
             # Check process depth
             depth = 0
-            parent = ""
-            #while((parent = get_process_parent(process_event))):
-            #    depth += 1
+            parent = get_process_parent(process_event)
+            while(parent):
+                depth += 1
+                get_process_parent(parent)
 
             if depth > 1:
                 # Oh oh, we found a process two levels deep or lower
