@@ -1118,7 +1118,7 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
-    graph.write("/Users/adri/Desktop/graph.dot")
+    graph.write(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
     color_dict = {
         "on_file_delete": "blue",
         "on_file_write": "blue", 
