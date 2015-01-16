@@ -263,10 +263,10 @@ class AbstractProcessAnalyser(object):
                    pid: the pid where the call happened'''
         pass
 
-    def on_http_request(self):
+    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         pass
 
-    def on_file_write(self):
+    def on_file_write(self, process_id, thread_id, path, data, offset):
         pass
 
     def on_file_delete(self, process_id, thread_id, path):
@@ -278,10 +278,10 @@ class AbstractProcessAnalyser(object):
     def on_registry_delete(self, process_id, thread_id, key):
         pass
 
-    def on_socket_connect(self):
+    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
         pass
 
-    def on_shell_execute(self):
+    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
         pass
 
 
@@ -348,9 +348,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         self.event_handler.on_registry_delete(process_id, thread_id, key) 
         # super(AggregateProcessAnalyser, self).on_registry_delete()
 
-    def on_shell_execute(self, process_id, thread_id, command):
+    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
         print "SHELL COMMAND: %s" % command
-        self.event_handler.on_shell_execute(process_id, thread_id, command)
+        self.event_handler.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
         # super(AggregateProcessAnalyser, self).on_shell_execute()
 
     def on_file_write(self, process_id, thread_id, path, data, offset):
@@ -626,7 +626,10 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             process_spawned = arguments["ProcessSpawned"]
             working_directory = arguments["WorkingDirectory"]
             shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
-            self.on_shell_execute(process_id, thread_id, shell_command)
+            command = arguments["Command"]
+            classname = arguments["Class"]
+            return_status = status
+            self.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
         else:
             print api
 
@@ -741,7 +744,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_http_request"
         self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
-        self.graph.vs[vertex_id]["data"] = {"request":http_request_data,"response":http_response_data}
+        self.graph.vs[vertex_id]["data"] = {"method":http_verb,"url":http_url,"request":http_request_data,"response":http_response_data}
 
         print self.first_get_of_process
         print self.latest_get_per_process
@@ -787,7 +790,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_file_write"
         self.graph.vs[vertex_id]["label"] = "Written to " + path
-        self.graph.vs[vertex_id]["data"] = {"data":data,"offset":offset}
+        self.graph.vs[vertex_id]["data"] = {"path":path,"data":data,"offset":offset}
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
@@ -804,7 +807,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_file_delete"
         self.graph.vs[vertex_id]["label"] = "Deleted file " + path
-        self.graph.vs[vertex_id]["data"] = {}
+        self.graph.vs[vertex_id]["data"] = {"path":path}
 
         self.put_under_http_or_process(process_id, vertex_id)
 
@@ -819,7 +822,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_registry_set"
         self.graph.vs[vertex_id]["label"] = key + " = " + value
-        self.graph.vs[vertex_id]["data"] = {}
+        self.graph.vs[vertex_id]["data"] = {"key":key,"value":value}
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
@@ -836,7 +839,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_registry_delete"
         self.graph.vs[vertex_id]["label"] = "DELETE " + key
-        self.graph.vs[vertex_id]["data"] = {}
+        self.graph.vs[vertex_id]["data"] = {"key":key}
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
@@ -853,14 +856,14 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_socket_connect"
         self.graph.vs[vertex_id]["label"] = "Socket: " + str(ip) + ":" + str(port)
-        self.graph.vs[vertex_id]["data"] = {}
+        self.graph.vs[vertex_id]["data"] = {"socket_id":socket_id,"ip":ip,"port":port}
 
         self.put_under_http_or_process(process_id, vertex_id)
 
         self.id_counter += 1
 
 
-    def on_shell_execute(self, process_id, thread_id, command):
+    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -868,8 +871,15 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_shell_execute"
-        self.graph.vs[vertex_id]["label"] = command
-        self.graph.vs[vertex_id]["data"] = {"command":command}
+        self.graph.vs[vertex_id]["label"] = shell_command
+        self.graph.vs[vertex_id]["data"] = {
+            "Command":shell_command,
+            "return_status":return_status,
+            "working_directory":working_directory,
+            "process_spawned":process_spawned,
+            "class":classname,
+            "cmd":command
+        }
 
         self.put_under_http_or_process(process_id, vertex_id)
         
