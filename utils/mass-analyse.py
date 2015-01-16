@@ -1187,7 +1187,7 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
-    graph.write("/Users/adri/Desktop/graph.dot")
+    graph.write(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
     graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
     layout_graph = graph.layout("kk")
     plot(graph, bbox=(3000,3000), layout=layout_graph)
