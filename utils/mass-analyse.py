@@ -195,45 +195,85 @@ class Detecter(object):
 
     # Returns a list of all child vertex IDs (excl. vertex) 
     def get_childs_of_vertex(self, graph, vertex):
-        return graph.neighborhood(vertex.index, order=len(graph.vs), mode=OUT)
+        childs = []
+        # Recursively getting all childs of vertex
+        child_vids = self.get_childs(graph, vertex.index)
+        self.recursion_childs(graph, childs, child_vids)
+        return childs
+
+    def recursion_childs(self, graph, childs, child_vids):
+        if len(child_vids) > 0:
+            childs.extend(child_vids)
+            for child_vid in child_vids:
+                self.recursion_childs(graph, childs, self.get_childs(graph, child_vid))
+
+
+    def get_childs(self, graph, vertex_id):
+        childs = graph.neighbors(vertex_id, mode=OUT)
+        print "Childs of VID %i:" % vertex_id
+        print childs
+        return childs
+        
+        
+
 
     # Returns a list of vertex IDs from the vertex to the root node (excl. vertex)
     def vertex_to_root(self, vertex):
         list_of_vertices = []
-        parent = self.get_parent(vertex)
-        while(parent):
-            list_of_vertices.append(parent.index)
-            parent = self.get_parent(parent)
+        print "Finding parent of vertex ID %i (PID %i)" % (vertex.index, vertex["pid"])
+        parent_index = self.get_parent(vertex)
+        print "Parent index is %i" % parent_index
+        if parent_index:
+            parent = vertex.graph.vs[parent_index]
+            while(parent):
+                list_of_vertices.append(parent.index)
+                print "Finding parent of vertex ID %i (Process %i)" % (parent.index, parent["pid"])
+                parent_index = self.get_parent(parent)
+                print "Parent index is %i" % parent_index
+                if parent_index:
+                    parent = vertex.graph.vs[parent_index]
+                else:
+                    parent = False
         return list_of_vertices
 
     def get_parent(self, vertex):
         neighbors = vertex.graph.neighbors(vertex.index, mode=IN)
+        # neighbors contains a list of vertex IDs
         if len(neighbors) == 1: # There should be just one incoming edge
             parent = neighbors[0]
             return parent
         else:
+            print "List of neighbors is %i long" % len(neighbors)
+            print "Process information of this vertex:"
+            print "\tProcess ID: %i\n\tParent ID: %i\n\tProcess name:%s" % (vertex["pid"], vertex["data"]["parent_id"], vertex["data"]["name"])
             return False
 
 class Subprocess_from_tab(Detecter):
     name = "Subprocess_from_tab"
 
     def analyze_graph(self, graph):
-        subgraph = Graph()
         return_value = {"malware_found":False,"graph":False}
         # Get all vertices of event "on_new_process"		
         new_process_events = graph.vs.select(type_eq="on_new_process")
         for vertex in new_process_events:
             # Check process depth
+            print "Getting vertices to root..."
             vertices_to_root = self.vertex_to_root(vertex)
+            print vertices_to_root
 
             if len(vertices_to_root) > 1:
                 # Oh oh, we found a process two levels deep or lower *runs around*
+                print "Oh oh, we found a process two levels deep or lower *runs around*"
                 return_value["malware_found"] = True
 
                 # Create subgraph
                 all_relevant_vertices = [vertex.index]
                 all_relevant_vertices.extend(vertices_to_root)
+                print "Getting list of all childs of vertex..."
                 all_relevant_vertices.extend(self.get_childs_of_vertex(graph, vertex))
+                print "Create subgraph..."
+                print "Relevant subvertices:"
+                print all_relevant_vertices
                 return_value["graph"] = graph.subgraph(all_relevant_vertices)
 
                 # TODO: We might find multiple processes like this, that we find interesting: show them all in one graph...
@@ -322,7 +362,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         elif category == "threading":
             callback = self.__process_ignored_event
         elif category == "process":
-            callback = self.__process_ignored_event
+            callback = self.__process_process_event
         elif category == "system":
             callback = self.__process_system_event
         elif category == "synchronization":
@@ -330,6 +370,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         elif category == "device":
             callback = self.__process_ignored_event
         elif category == "services":
+            callback = self.__process_ignored_event
+        elif category == "__notification__":
             callback = self.__process_ignored_event
         else:
             callback = self.__process_unknown_event
@@ -602,6 +644,18 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         else:
             print api
 
+    def __process_process_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+                               api, arguments, call_id):
+        if api == "ShellExecuteExA" or api == "ShellExecuteExW":
+            print "GRAPH: hhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufuppelpuf"
+            process_spawned = arguments["ProcessSpawned"]
+            working_directory = arguments["WorkingDirectory"]
+            shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
+            command = arguments["Command"]
+            classname = arguments["Class"]
+            return_status = status
+            self.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
+
     def __process_system_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
                                api, arguments, call_id):
         __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
@@ -622,14 +676,6 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
             __filesystem_state["handles"].remove(file_handle)
             del __filesystem_state["handle_state"][file_handle]
-        elif api == "ShellExecuteExA" or api == "ShellExecuteExW":
-            process_spawned = arguments["ProcessSpawned"]
-            working_directory = arguments["WorkingDirectory"]
-            shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
-            command = arguments["Command"]
-            classname = arguments["Class"]
-            return_status = status
-            self.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
         else:
             print api
 
@@ -657,7 +703,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
 class GraphGenerator(AbstractProcessAnalyser):
     # The Graph :D
-    graph = Graph()
+    graph = Graph(directed=True)
 
     # Dictionaries to make lookups in the graph a lot faster
     latest_get_per_process = {} # Process ID -> Unique ID
@@ -680,7 +726,7 @@ class GraphGenerator(AbstractProcessAnalyser):
                 self.graph.vs[vertex_id]["pid"] = process_id
                 self.graph.vs[vertex_id]["thread_id"] = 0
                 self.graph.vs[vertex_id]["type"] = "on_new_process"
-                self.graph.vs[vertex_id]["label"] = "Process: " + str(process_id)
+                self.graph.vs[vertex_id]["label"] = "Process: " + process_name
                 self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
                 print "GRAPH: Created vertex of new process"
@@ -692,11 +738,11 @@ class GraphGenerator(AbstractProcessAnalyser):
                     print "GRAPH: The parent is the root and it's process name is 'Cuckoo Analyzer'"
                     # It's a tab process, hang it below the parent
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
-                elif parent["data"]["name"] == "iexplore.exe" and len(parent.neighbors(vertex.index, mode=IN)) > 0:
+                elif parent["data"]["name"] == "iexplore.exe" and len(parent.graph.neighbors(parent.index, mode=IN)) > 0:
                     print "GRAPH: parent heeft de naam 'iexplore.exe' en heeft incoming edges"
                     # It's a process spawned by a tab
                     # Hang it below the latest GET from this tab
-                    latest_get_from_tab = find_latest_get_from_tab(parent_id) 
+                    latest_get_from_tab = self.find_latest_get_from_tab(parent_id) 
                     self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
                 elif parent["data"]["name"] != "iexplore.exe":
                     print "GRAPH: parent is geen tabje..."
@@ -706,7 +752,7 @@ class GraphGenerator(AbstractProcessAnalyser):
                     print "GRAPH: Oh oh, I didn't cover this case..."
             else:
                 print "GRAPH: Found more than one parent, say wut..."
-        except:
+        except KeyError as e:
             # The Graph is empty
             print "GRAPH: graph is empty..."
 
@@ -726,7 +772,7 @@ class GraphGenerator(AbstractProcessAnalyser):
             self.graph.vs[1]["pid"] = process_id
             self.graph.vs[1]["thread_id"] = 0
             self.graph.vs[1]["type"] = "on_new_process"
-            self.graph.vs[1]["label"] = "Process: " + str(process_id)
+            self.graph.vs[1]["label"] = "Process: " + process_name
             self.graph.vs[1]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
             # Create edge from root node to tab/window process
@@ -743,7 +789,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_http_request"
-        self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
+        #self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
         self.graph.vs[vertex_id]["data"] = {"method":http_verb,"url":http_url,"request":http_request_data,"response":http_response_data}
 
         print self.first_get_of_process
@@ -763,7 +809,6 @@ class GraphGenerator(AbstractProcessAnalyser):
             
             self.first_get_of_process[process_id] = self.id_counter
         else:
-            print "GRAPH: There was already an HTTP Request"
             # There was already a HTTP Request
             # Hang it below this first HTTP Request
             
@@ -789,7 +834,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_file_write"
-        self.graph.vs[vertex_id]["label"] = "Written to " + path
+        #self.graph.vs[vertex_id]["label"] = "Written to " + path
         self.graph.vs[vertex_id]["data"] = {"path":path,"data":data,"offset":offset}
 
         # Put it under the latest HTTP Request
@@ -806,7 +851,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_file_delete"
-        self.graph.vs[vertex_id]["label"] = "Deleted file " + path
+        #self.graph.vs[vertex_id]["label"] = "Deleted file " + path
         self.graph.vs[vertex_id]["data"] = {"path":path}
 
         self.put_under_http_or_process(process_id, vertex_id)
@@ -814,6 +859,8 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.id_counter += 1
 
     def on_registry_set(self, process_id, thread_id, key, value):
+        if process_id in [3984, 3952, 3820, 2304]:
+            print "GRAPH: on_registry_set: Subnode for malicious processes"
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -821,7 +868,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_registry_set"
-        self.graph.vs[vertex_id]["label"] = key + " = " + value
+        #self.graph.vs[vertex_id]["label"] = key + " = " + value
         self.graph.vs[vertex_id]["data"] = {"key":key,"value":value}
 
         # Put it under the latest HTTP Request
@@ -838,7 +885,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_registry_delete"
-        self.graph.vs[vertex_id]["label"] = "DELETE " + key
+        #self.graph.vs[vertex_id]["label"] = "DELETE " + key
         self.graph.vs[vertex_id]["data"] = {"key":key}
 
         # Put it under the latest HTTP Request
@@ -855,7 +902,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_socket_connect"
-        self.graph.vs[vertex_id]["label"] = "Socket: " + str(ip) + ":" + str(port)
+        self.graph.vs[vertex_id]["label"] = str(ip) + ":" + str(port)
         self.graph.vs[vertex_id]["data"] = {"socket_id":socket_id,"ip":ip,"port":port}
 
         self.put_under_http_or_process(process_id, vertex_id)
@@ -864,6 +911,8 @@ class GraphGenerator(AbstractProcessAnalyser):
 
 
     def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
+        if process_id == 3820:
+            print "GRAPH: dfshjsdgjhsdfhjkdhjkdgqhjdsfhjkdsghjkldfghjkdfghjdfgjhkdfghjk"
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -886,7 +935,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.id_counter += 1
                 
     def find_latest_get_from_tab(self, pid):
-        uid = latest_get_per_process[pid]
+        uid = self.latest_get_per_process[pid]
         matches = self.graph.vs.select(id_eq=uid)
         if len(matches) == 1:
             return matches[0]
@@ -894,14 +943,20 @@ class GraphGenerator(AbstractProcessAnalyser):
             raise Exception("Unique ID not found")
 
     def put_under_http_or_process(self, process_id, vertex_id):
+        if process_id in [3984, 3952, 3820, 2304]:
+            print "GRAPH: Subnode for malicious processes"
         # HTTP Request already exists
         if process_id in self.latest_get_per_process:
+            if process_id in [3984, 3952, 3820, 2304]:
+                print "GRAPH: \tuhu"
             uid = self.latest_get_per_process[process_id]
             vertexseq = self.graph.vs.select(id_eq=uid)
             if len(vertexseq) == 1:
                 get_request = vertexseq[0]
                 self.graph.add_edges([(int(get_request.index), int(vertex_id))])
         else: # No HTTP Request has been seen for this process :(
+            if process_id in [3984, 3952, 3820, 2304]:
+                print "GRAPH: \tuhu"
             parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
             if len(parents) == 1:
                 parent = parents[0]
@@ -1041,13 +1096,13 @@ def main():
         task_id = args.input
 
         if not task_id.isdigit():
-            print(bold(red("Error")) + ": " + task_id + " is not a valid task id")
+            print(bold(red("Error")) + ": " + str(task_id) + " is not a valid task id")
             return False
 
         task_id = int(task_id)
 
         if not db.view_task(task_id):
-            print(bold(red("Error")) + ": " + task_id + " is not a valid task")
+            print(bold(red("Error")) + ": " + str(task_id) + " is not a valid task")
             return False
 
         if db.view_task(task_id).status != TASK_REPORTED:
@@ -1104,21 +1159,6 @@ def main():
 
     # Get the graph
     graph = graph_generator.get_graph()
-    
-    # Run Analyzers
-    for analyzer in [Subprocess_from_tab()]:
-        results = analyzer.analyze_graph(graph)
-        if results["malware_found"]:
-            print "Analyzer '%s' found:" % analyzer.name
-            # Show subgraph with relevant data
-            if results["graph"]:
-                layout_graph = results["graph"].layout("kk")
-                plot(results["graph"], bbox=(1000,1000), layout=layout_graph)
-        else:
-            print "Analyzer '%s' did not find anything interesting." % analyzer.name
-        
-    # Show graph - used for debugging right now...
-    graph.write(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
     color_dict = {
         "on_file_delete": "blue",
         "on_file_write": "blue", 
@@ -1129,9 +1169,25 @@ def main():
         "on_http_request":"yellow",
         "on_shell_execute":"red"
     }
-    graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
-    layout_graph = graph.layout("kk")
-    plot(graph, bbox=(3000,3000), layout=layout_graph)
+    
+    # Run Analyzers
+    for analyzer in [Subprocess_from_tab()]:
+        results = analyzer.analyze_graph(graph)
+        if results["malware_found"]:
+            print "Analyzer '%s' found:" % analyzer.name
+            # Show subgraph with relevant data
+            if results["graph"]:
+                results["graph"].vs["color"] = [color_dict[typez] for typez in results["graph"].vs["type"]]
+                layout_graph = results["graph"].layout("kk")
+                plot(results["graph"], bbox=(3000,3000), layout=layout_graph)
+        else:
+            print "Analyzer '%s' did not find anything interesting." % analyzer.name
+        
+    # Show graph - used for debugging right now...
+    graph.write(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
+    #graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
+    #layout_graph = graph.layout("kk")
+    #plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
