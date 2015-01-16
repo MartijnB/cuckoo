@@ -337,7 +337,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
 
     def on_file_delete(self, process_id, thread_id, path):
-        super(AggregateProcessAnalyser, self).on_file_delete(process_id, thread_id, event)
+        super(AggregateProcessAnalyser, self).on_file_delete(process_id, thread_id, path)
 
     def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
