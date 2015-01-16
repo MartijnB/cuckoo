@@ -337,12 +337,11 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
 
     def on_file_delete(self, process_id, thread_id, path):
-        super(AggregateProcessAnalyser, self).on_file_delete(process_id, thread_id, path)
+        self.event_handler.on_file_delete(process_id, thread_id, path) 
 
     def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
         self.event_handler.on_registry_set(process_id, thread_id, key, value) 
-        # super(AggregateProcessAnalyser, self).on_registry_set()
 
     def on_registry_delete(self, process_id, thread_id, key):
         print "REGISTRY DELETE: %s" % key
@@ -356,9 +355,11 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
     def on_file_write(self, process_id, thread_id, path, data, offset):
         print "Write data to {0}".format(path)
+        self.event_handler.on_file_write(process_id, thread_id, path, data, offset)
 
     def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
         print "Connect to " + ip + ":" + str(port)
+        self.event_handler.on_socket_connect(process_id, thread_id, socket_id, ip, port)
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         print http_verb + " " + http_url
