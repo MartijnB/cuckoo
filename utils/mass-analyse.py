@@ -835,7 +835,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_registry_delete"
-        self.graph.vs[vertex_id]["label"] = "DELETE" + key
+        self.graph.vs[vertex_id]["label"] = "DELETE " + key
         self.graph.vs[vertex_id]["data"] = {}
 
         # Put it under the latest HTTP Request
@@ -852,7 +852,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_socket_connect"
-        self.graph.vs[vertex_id]["label"] = "Socket: " + ip + ":" + port
+        self.graph.vs[vertex_id]["label"] = "Socket: " + str(ip) + ":" + str(port)
         self.graph.vs[vertex_id]["data"] = {}
 
         self.put_under_http_or_process(process_id, vertex_id)
@@ -1108,9 +1108,20 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
-    graph.write("/Users/adri/Desktop/small_graph.svg", format="svg")
-    #layout_graph = graph.layout("kk")
-    #plot(graph, bbox=(3000,3000), layout=layout_graph)
+    graph.write("/Users/adri/Desktop/graph.dot")
+    color_dict = {
+        "on_file_delete": "blue",
+        "on_file_write": "blue", 
+        "on_socket_connect":"red",
+        "on_new_process":"red",
+        "on_registry_delete":"green",
+        "on_registry_set":"green",
+        "on_http_request":"yellow",
+        "on_shell_execute":"red"
+    }
+    graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
+    layout_graph = graph.layout("kk")
+    plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
