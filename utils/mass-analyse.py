@@ -164,14 +164,12 @@ class Registry_Event_Handler(object):
 
         # DELETING REGISTRY KEYS
         elif api == "NtDeleteKey":
-            registry_name = self.registry[pid]["reg_keys_process_handle"][
-                thread_id_ + handle]  # Naam die bij handle hoort
+            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]  # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name] = 1
 
             event = {"type": "deleted", "key": registry_name}
         elif api == "RegDeleteKeyA" or api == "RegDeleteKeyW":
-            registry_name = self.registry[pid]["reg_keys_process_handle"][
-                thread_id_ + handle]  # Naam die bij handle hoort
+            registry_name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle]  # Naam die bij handle hoort
             self.registry[pid]["reg_keys_deleted"][registry_name + r'\\' + arguments["SubKey"]] = 1
 
             event = {"type": "deleted", "key": registry_name + r'\\' + arguments["SubKey"]}
@@ -271,7 +269,7 @@ class AbstractProcessAnalyser(object):
     def on_file_write(self):
         pass
 
-    def on_file_delete(self, event):
+    def on_file_delete(self, process_id, thread_id, path):
         pass
 
     def on_registry_set(self, process_id, thread_id, key, value):
@@ -338,8 +336,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
         callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
 
-    def on_file_delete(self, event):
-        super(AggregateProcessAnalyser, self).on_file_delete(event)
+    def on_file_delete(self, process_id, thread_id, path):
+        super(AggregateProcessAnalyser, self).on_file_delete(process_id, thread_id, event)
 
     def on_registry_set(self, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
@@ -599,7 +597,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         elif api == "DeleteFileA" or api == "DeleteFileW":
             file_path = arguments["FileName"]
 
-            self.on_file_delete(file_path)
+            self.on_file_delete(process_id, thread_id, file_path)
         else:
             print api
 
@@ -672,23 +670,14 @@ class GraphGenerator(AbstractProcessAnalyser):
             if len(parents) == 1:
                 print "GRAPH: Found the parent!"
                 parent = parents[0]
-                print "GRAPH: hmm k"
                 self.graph.add_vertex()
-                print "GRAPH: hmm k"
                 vertex_id = len(self.graph.vs) - 1
-                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["id"] = self.id_counter
-                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["pid"] = process_id
-                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["thread_id"] = 0
-                print "GRAPH: hmm k"
                 self.graph.vs[vertex_id]["type"] = "on_new_process"
-                print "GRAPH: hmm k, yup dit deed ie nog"
                 self.graph.vs[vertex_id]["label"] = "Process: " + str(process_id)
-                print "GRAPH: hmm k en dit niet"
                 self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
-                print "GRAPH: hmm k"
 
                 print "GRAPH: Created vertex of new process"
 
@@ -743,8 +732,6 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.id_counter += 1
 
     def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
-        print "GRAPH: on_http_request(%s, %s, %s, %s, %s, %s)" % (process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
-        #pass
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -790,11 +777,37 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.latest_get_per_process[process_id] = self.id_counter
         self.id_counter += 1
 
-    def on_file_write(self):
-        pass
+    def on_file_write(self, process_id, thread_id, path, data, offset):
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_file_write"
+        self.graph.vs[vertex_id]["label"] = "Written to " + path
+        self.graph.vs[vertex_id]["data"] = {"data":data,"offset":offset}
 
-    def on_file_delete(self, event):
-        pass
+        # Put it under the latest HTTP Request
+        # or directly under the process if there was no HTTP Request
+        self.put_under_http_or_process(process_id, vertex_id)
+
+        self.id_counter += 1
+
+    def on_file_delete(self, process_id, thread_id, path):
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_file_delete"
+        self.graph.vs[vertex_id]["label"] = "Deleted file " + path
+        self.graph.vs[vertex_id]["data"] = {}
+
+        self.put_under_http_or_process(process_id, vertex_id)
+
+        self.id_counter += 1
 
     def on_registry_set(self, process_id, thread_id, key, value):
         # Create vertex
@@ -830,8 +843,21 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_socket_connect(self):
-        pass
+    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
+        # Create vertex
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_socket_connect"
+        self.graph.vs[vertex_id]["label"] = "Socket: " + ip + ":" + port
+        self.graph.vs[vertex_id]["data"] = {}
+
+        self.put_under_http_or_process(process_id, vertex_id)
+
+        self.id_counter += 1
+
 
     def on_shell_execute(self, process_id, thread_id, command):
         # Create vertex
@@ -1081,8 +1107,9 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
+    graph.write("/Users/adri/Desktop/small_graph.svg", format="svg")
     #layout_graph = graph.layout("kk")
-    #plot(graph, bbox=(1000,1000), layout=layout_graph)
+    #plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
