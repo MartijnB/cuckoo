@@ -274,11 +274,13 @@ class Subprocess_from_tab(Detecter):
                 print "Create subgraph..."
                 print "Relevant subvertices:"
                 print all_relevant_vertices
-                return_value["graph"] = graph.subgraph(all_relevant_vertices)
+                if return_value["graph"]:
+                    return_value["graph"].append(graph.subgraph(all_relevant_vertices))
+                else:
+                    return_value["graph"] = [graph.subgraph(all_relevant_vertices)]
 
                 # TODO: We might find multiple processes like this, that we find interesting: show them all in one graph...
                 # For now, let just break
-                break
 
         return return_value
 
@@ -1177,17 +1179,18 @@ def main():
             print "Analyzer '%s' found:" % analyzer.name
             # Show subgraph with relevant data
             if results["graph"]:
-                results["graph"].vs["color"] = [color_dict[typez] for typez in results["graph"].vs["type"]]
-                layout_graph = results["graph"].layout("kk")
-                plot(results["graph"], bbox=(3000,3000), layout=layout_graph)
+                for subgraph in results["graph"]:
+                    subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
+                    layout_graph = subgraph.layout("kk")
+                    plot(subgraph, bbox=(3000,3000), layout=layout_graph)
         else:
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
     graph.write("/Users/adri/Desktop/graph.dot")
-    #graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
-    #layout_graph = graph.layout("kk")
-    #plot(graph, bbox=(3000,3000), layout=layout_graph)
+    graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
+    layout_graph = graph.layout("kk")
+    plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
