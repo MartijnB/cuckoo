@@ -10,7 +10,6 @@ import sys
 import time
 
 from igraph import *
-import pprint
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
@@ -29,7 +28,6 @@ from modules.processing.behavior import Processes
 class Registry_Event_Handler(object):
     registry = {}
     anomalities = {}
-    pp = pprint.PrettyPrinter(indent=4)
 
     # Nasty code incoming
     def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
@@ -74,38 +72,25 @@ class Registry_Event_Handler(object):
             self.registry[pid]["reg_keys_created"][path] = 1
             self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = path
         elif api == "RegCreateKeyExA" or api == "RegCreateKeyExW":
-            # TODO: We're working with a subkey, not the whole key, check registry value...
             subkey = arguments["SubKey"]
             registry = arguments["Registry"]
-            print "REGISTRY RegCreateKeyEx: Handle = %s, Registry = %s, SubKey = %s" % (handle, registry, subkey)
             if registry in self.registry[pid]["reg_keys_process_handle"]:
-                print "REGISTRY\t entry exists in reg_keys_process_handle"
-                print "REGISTRY\t voeg de key in ^ (is een van de predefined) toe aan de subkey en sla die op in created"
-                print "REGISTRY\t Zet de TID_Handle -> volledige key in reg_keys_process_handle"
                 self.registry[pid]["reg_keys_created"][
                     self.registry[pid]["reg_keys_process_handle"][registry] + r'\\' + subkey] = 1
                 self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
                     self.registry[pid]["predefined_key_handle"][registry] + r'\\' + subkey
             else:
                 try:
-                    print "REGISTRY\t entry does NOT exist in reg_keys_process_handle, de registry key is dus niet predefined"
-                    print "REGISTRY\t Mogelijk is het dus opgeslagen uit vorige entries als TID_handle"
                     name = self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry]
                     self.registry[pid]["reg_keys_created"][name + r'\\' + subkey] = 1
                     self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = \
                         self.registry[pid]["reg_keys_process_handle"][thread_id_ + registry] + r'\\' + subkey
                 except:
                     # Pech gehad
-                    print "REGISTRY\t Pech gehad..."
                     if "RegCreateKeyEx" in self.anomalities:
-                        self.anomalities["RegCreateKeyEx"].append(
-                            "Could not find handle to open the subkey '" + subkey + "'")
+                        self.anomalities["RegCreateKeyEx"].append("Could not find handle to open the subkey '" + subkey + "'")
                     else:
-                        self.anomalities["RegCreateKeyEx"] = [
-                            "Could not find handle to open the subkey '" + subkey + "'"]
-
-                        # self.registry[pid]["reg_keys_created"][subkey] = 1
-                        #self.registry[pid]["reg_keys_process_handle"][thread_id_ + handle] = subkey
+                        self.anomalities["RegCreateKeyEx"] = ["Could not find handle to open the subkey '" + subkey + "'"]
 
         # OPENING REGISTRY KEYS
         elif api == "NtOpenKey":
@@ -198,7 +183,6 @@ class Detecter(object):
     # Returns a list of all child vertex IDs (excl. vertex) 
     def get_childs_of_vertex(self, graph, vertex):
         childs = []
-        # Recursively getting all childs of vertex
         child_vids = self.get_childs(graph, vertex.index)
         self.recursion_childs(graph, childs, child_vids)
         return childs
@@ -215,9 +199,6 @@ class Detecter(object):
         print "Childs of VID %i:" % vertex_id
         print childs
         return childs
-        
-        
-
 
     # Returns a list of vertex IDs from the vertex to the root node (excl. vertex)
     def vertex_to_root(self, vertex):
@@ -267,6 +248,7 @@ class Subprocess_from_tab(Detecter):
                 # Oh oh, we found a process two levels deep or lower *runs around*
                 print "Oh oh, we found a process two levels deep or lower *runs around*"
                 return_value["malware_found"] = True
+                return_value["explanation"] = "Found a process spawn underneath a Tab process of Internet Explorer, which is very unusual"
 
                 # Create subgraph
                 all_relevant_vertices = [vertex.index]
@@ -334,8 +316,8 @@ class AbstractEventProcessor(object):
     def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
         self.event_handler.on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
 
-    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
-        self.event_handler.on_anomaly_detected(process_id, subcategory, function_name)
+    def on_anomaly_detected(self, timestamp, process_id, thread_id, subcategory, function_name):
+        self.event_handler.on_anomaly_detected(timestamp, process_id, thread_id, subcategory, function_name)
 
 class NullEventProcessor(AbstractEventProcessor):
     def __init__(self):
@@ -374,7 +356,7 @@ class NullEventProcessor(AbstractEventProcessor):
                     arguments, call_id):
         pass
 
-    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
+    def on_anomaly_detected(self, timestamp, process_id, thread_id, subcategory, function_name):
         pass
 
 
@@ -462,9 +444,9 @@ class EventAggregateProcessor(AbstractEventProcessor):
         print http_verb + " " + http_url
         super(EventAggregateProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
 
-    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
+    def on_anomaly_detected(self, timestamp, process_id, thread_id,  subcategory, function_name):
         print "Anomaly detected: %s of %s" % (subcategory, function_name)
-        super(EventAggregateProcessor, self).on_anomaly_detected(timestamp, process_id, subcategory, function_name)
+        super(EventAggregateProcessor, self).on_anomaly_detected(timestamp, process_id, thread_id, subcategory, function_name)
 
     @staticmethod
     def __process_unknown_event(timestamp, process_id, category, status, return_value, thread_id, repeated, api,
@@ -741,7 +723,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
     def __process_notification_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                api, arguments, call_id):
         if api == "__anomaly__":
-            self.on_anomaly_detected(timestamp, process_id, arguments["Subcategory"], arguments["FunctionName"])
+            self.on_anomaly_detected(timestamp, process_id, thread_id, arguments["Subcategory"], arguments["FunctionName"])
 
     __state = {}
 
@@ -1040,7 +1022,22 @@ class EventGraphGenerator(AbstractEventProcessor):
         self.put_under_http_or_process(process_id, vertex_id)
         
         self.id_counter += 1
-                
+
+    def on_anomaly_detected(self, timestamp, process_id, thread_id, subcategory, function_name):
+        # Create vertex    
+        self.graph.add_vertex()
+        vertex_id = len(self.graph.vs) - 1
+        self.graph.vs[vertex_id]["id"] = self.id_counter
+        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["thread_id"] = thread_id
+        self.graph.vs[vertex_id]["type"] = "on_anomaly_detected"
+        self.graph.vs[vertex_id]["label"] = ""
+        self.graph.vs[vertex_id]["data"] = {"category":subcategory,"function_name":function_name}
+
+        self.put_under_http_or_process(process_id, vertex_id)
+
+        self.id_counter += 1
+
     def find_latest_get_from_tab(self, pid):
         uid = self.latest_get_per_process[pid]
         matches = self.graph.vs.select(id_eq=uid)
@@ -1360,14 +1357,15 @@ def main():
         "on_registry_delete":"green",
         "on_registry_set":"green",
         "on_http_request":"yellow",
-        "on_shell_execute":"red"
+        "on_shell_execute":"red",
+        "on_anomaly_detected":"black"
     }
     
     # Run Analyzers
     for analyzer in [Subprocess_from_tab()]:
         results = analyzer.analyze_graph(graph)
         if results["malware_found"]:
-            print "Analyzer '%s' found:" % analyzer.name
+            print "Analyzer '%s': %s" % (analyzer.name, results["explanation"])
             # Show subgraph with relevant data
             if results["graph"] and args.graphs:
                 for subgraph in results["graph"]:
