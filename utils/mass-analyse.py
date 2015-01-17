@@ -698,8 +698,6 @@ class EventAggregateProcessor(AbstractEventProcessor):
             file_path = arguments["FileName"]
 
             self.on_file_delete(timestamp, process_id, thread_id, file_path)
-        else:
-            print api
 
     def __process_process_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                api, arguments, call_id):
@@ -734,9 +732,6 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
             __filesystem_state["handles"].remove(file_handle)
             del __filesystem_state["handle_state"][file_handle]
-        else:
-            print api
-
 
     __state = {}
 
