@@ -1074,6 +1074,9 @@ class AbstractLogProcessorEventHandler:
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
         pass
 
+    def on_process_finished(self, process_id):
+        pass
+
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
         pass
@@ -1136,6 +1139,8 @@ class JSONLogProcessor(AbstractLogProcessor):
             else:
                 return
 
+        self.event_handler.on_process_finished(self.current_process_data["process_id"])
+
         # All calls are processed
         self.processed_pids.append(self.current_process_data["process_id"])
 
@@ -1156,6 +1161,9 @@ class EventLogPreProcessHandler(AbstractLogProcessorEventHandler):
 
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
         self.event_handler.on_process_new(parent_id, process_name, process_id, first_seen)
+
+    def on_process_finished(self, process_id):
+        self.event_handler.on_process_finished(process_id)
 
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
