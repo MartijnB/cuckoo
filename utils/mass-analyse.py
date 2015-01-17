@@ -1306,7 +1306,7 @@ def main():
 
         url_list = []
 
-        with open(args.url_list, "r") as f:
+        with open(file_name, "r") as f:
             for url in f:
                 url = url.strip()
 
