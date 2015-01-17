@@ -23,6 +23,7 @@ from lib.cuckoo.core.database import Database
 from lib.cuckoo.core.database import TASK_REPORTED, TASK_FAILED_ANALYSIS, TASK_FAILED_PROCESSING
 from lib.cuckoo.core.startup import init_modules
 from lib.cuckoo.common.colors import bold, red, green, yellow
+from modules.processing.behavior import Processes
 
 
 class Registry_Event_Handler(object):
@@ -1072,6 +1073,12 @@ class AbstractLogProcessor:
         self.task_id = task_id
         self.event_handler = event_handler
 
+    def has_more_events(self):
+        pass
+
+    def parse_events(self, max_events_to_process=-1):
+        pass
+
 
 class AbstractLogProcessorEventHandler:
     def __init__(self):
@@ -1086,6 +1093,71 @@ class AbstractLogProcessorEventHandler:
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
         pass
+
+class BSONLogProcessor(AbstractLogProcessor):
+    def __init__(self, task_id, event_handler):
+        AbstractLogProcessor.__init__(self, task_id, event_handler)
+
+        self._processes = Processes(os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "logs"))
+        self._processes_data = self._processes.run()
+
+        if len(self._processes_data) == 0:
+            raise LogProcessorException("No processes found!")
+
+        self._current_process_index = 0
+        self._current_process_event_index = 0
+
+        self.current_process_data = self._processes_data[self._current_process_index]
+        self.current_process_call_parser = self.current_process_data["calls"]
+
+    def has_more_events(self):
+        if self._current_process_index < len(self._processes_data):
+            return True
+
+        return False
+
+    def parse_events(self, max_events_to_process=-1):
+        # Report new process
+        if self._current_process_event_index == 0:
+            self.event_handler.on_process_new(self.current_process_data["parent_id"],
+                                              self.current_process_data["process_name"],
+                                              self.current_process_data["process_id"],
+                                              self.current_process_data["first_seen"])
+
+        try:
+            while True:
+                if max_events_to_process == -1 or max_events_to_process > 0:
+                    current_process_call = self.current_process_call_parser.next()
+
+                    self.event_handler.on_api_call(current_process_call["timestamp"],
+                                                   self.current_process_data["process_id"],
+                                                   current_process_call["category"],
+                                                   current_process_call["status"],
+                                                   current_process_call["return"],
+                                                   current_process_call["thread_id"],
+                                                   current_process_call["repeated"],
+                                                   current_process_call["api"],
+                                                   current_process_call["arguments"],
+                                                   current_process_call["id"])
+
+                    self._current_process_event_index += 1
+                    max_events_to_process -= 1
+                else:
+                    return
+        except StopIteration:
+            pass
+
+        self.event_handler.on_process_finished(self.current_process_data["process_id"])
+
+        # All calls are processed
+        self._current_process_index += 1
+
+        # Update pointers to next
+        if self._current_process_index < len(self._processes_data):
+            self._current_process_event_index = 0
+
+            self.current_process_data = self._processes_data[self._current_process_index]
+            self.current_process_call_parser = self.current_process_data["calls"]
 
 
 class JSONLogProcessor(AbstractLogProcessor):
@@ -1184,6 +1256,7 @@ class EventLogPreProcessHandler(AbstractLogProcessorEventHandler):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=str, help="File with URLs to process.")
+    parser.add_argument("-j", "--json", help="Use the JSON files instead of the BSON files", action="store_true", required=False)
     parser.add_argument("-d", "--debug", help="Display debug messages", action="store_true", required=False)
     parser.add_argument("-t", "--task", help="Process existing task", action="store_true", required=False)
     args = parser.parse_args()
@@ -1258,7 +1331,12 @@ def main():
     log.info("Parse log....")
 
     graph_generator = EventGraphGenerator()
-    log_processor = JSONLogProcessor(task_id, EventLogPreProcessHandler(EventAggregateProcessor(EventReorderProcessor(graph_generator))))
+    process_chain = EventLogPreProcessHandler(EventAggregateProcessor(EventReorderProcessor(graph_generator)))
+
+    if args.json:
+        log_processor = JSONLogProcessor(task_id, process_chain)
+    else:
+        log_processor = BSONLogProcessor(task_id, process_chain)
 
     while log_processor.has_more_events():
         log_processor.parse_events()
