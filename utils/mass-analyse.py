@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import heapq
 import json
 import logging
 
@@ -577,7 +578,8 @@ class EventAggregateProcessor(AbstractEventProcessor):
                 "path": arguments["Path"],
                 "verb": arguments["Verb"],
                 "referer": arguments["Referer"],
-                "data": ""
+                "data": "",
+                "timestamp": timestamp
             }
         elif api == "InternetCloseHandle":
             handle = parse_handle(arguments["InternetHandle"])
@@ -615,7 +617,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
                                __network_state["handle_state"][session_handle]["server_name"] + \
                                __network_state["handle_state"][handle]["path"]
 
-                self.on_http_request(timestamp, process_id, thread_id, http_verb, http_url, None, http_response_data)
+                self.on_http_request(__network_state["handle_state"][handle]["timestamp"], process_id, thread_id, http_verb, http_url, None, http_response_data)
 
             # print "CloseHandle {0} ({1})".format(handle, __network_state["handle_state"][handle]["type"])
 
@@ -660,7 +662,8 @@ class EventAggregateProcessor(AbstractEventProcessor):
             __filesystem_state["handle_state"][file_handle] = {
                 "path": arguments["FileName"],
                 "data": "",
-                "offset": 0
+                "offset": 0,
+                "timestamp": timestamp
             }
         elif api == "NtOpenFile":
             file_handle = parse_handle(arguments["FileHandle"])
@@ -674,7 +677,8 @@ class EventAggregateProcessor(AbstractEventProcessor):
             __filesystem_state["handle_state"][file_handle] = {
                 "path": arguments["FileName"],
                 "data": "",
-                "offset": 0
+                "offset": 0,
+                "timestamp": timestamp
             }
         elif api == "NtWriteFile":
             file_handle = parse_handle(arguments["FileHandle"])
@@ -720,7 +724,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
                 return
 
             if len(__filesystem_state["handle_state"][file_handle]["data"]) > 0:
-                self.on_file_write(timestamp,
+                self.on_file_write(__filesystem_state["handle_state"][file_handle]["timestamp"],
                                    process_id,
                                    thread_id,
                                    __filesystem_state["handle_state"][file_handle]["path"],
@@ -758,37 +762,41 @@ class EventReorderProcessor(AbstractEventProcessor):
     def __init__(self, event_handler):
         super(EventReorderProcessor, self).__init__(event_handler)
 
+        self._process_event_queue_list = {}
+
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
         super(EventReorderProcessor, self).on_process_new(parent_id, process_name, process_id, first_seen)
 
+        self._process_event_queue_list[process_id] = []
+
     def on_process_finished(self, process_id):
+        while len(self._process_event_queue_list[process_id]):
+            (timestamp, functor, args) = heapq.heappop(self._process_event_queue_list[process_id])
+
+            functor(*args)
+
         super(EventReorderProcessor, self).on_process_finished(process_id)
 
-    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
-        super(EventReorderProcessor, self).on_file_write(timestamp, process_id, thread_id, path, data, offset)
+    def on_file_write(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_file_write, (timestamp, process_id) + args))
 
-    def on_file_delete(self, timestamp, process_id, thread_id, path):
-        super(EventReorderProcessor, self).on_file_delete(timestamp, process_id, thread_id, path)
+    def on_file_delete(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_file_delete, (timestamp, process_id) + args))
 
-    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
-                        http_response_data):
-        super(EventReorderProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url,
-                                                           http_request_data, http_response_data)
+    def on_http_request(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_http_request, (timestamp, process_id) + args))
 
-    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
-        super(EventReorderProcessor, self).on_registry_set(timestamp, process_id, thread_id, key, value)
+    def on_registry_set(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_registry_set, (timestamp, process_id) + args))
 
-    def on_registry_delete(self, timestamp, process_id, thread_id, key):
-        super(EventReorderProcessor, self).on_registry_delete(timestamp, process_id, thread_id, key)
+    def on_registry_delete(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_registry_delete, (timestamp, process_id) + args))
 
-    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned,
-                         command, classname, shell_command):
-        super(EventReorderProcessor, self).on_shell_execute(timestamp, process_id, thread_id, return_status,
-                                                            working_directory, process_spawned, command, classname,
-                                                            shell_command)
+    def on_shell_execute(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_shell_execute, (timestamp, process_id) + args))
 
-    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
-        super(EventReorderProcessor, self).on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
+    def on_socket_connect(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_file_write, (timestamp, process_id) + args))
 
 
 class EventGraphGenerator(AbstractEventProcessor):
