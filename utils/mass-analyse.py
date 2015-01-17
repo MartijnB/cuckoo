@@ -384,11 +384,6 @@ class ApiStateException(Exception):
 
 
 class EventAggregateProcessor(AbstractEventProcessor):
-    def __init__(self):
-        super(EventAggregateProcessor, self).__init__()
-
-        self.registry = Registry_Event_Handler()
-
     def __init__(self, event_handler):
         super(EventAggregateProcessor, self).__init__(event_handler=event_handler)
 
@@ -760,6 +755,9 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
 
 class EventReorderProcessor(AbstractEventProcessor):
+    def __init__(self, event_handler):
+        super(EventReorderProcessor, self).__init__(event_handler)
+
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
         super(EventReorderProcessor, self).on_process_new(parent_id, process_name, process_id, first_seen)
 
