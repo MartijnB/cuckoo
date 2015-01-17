@@ -1267,6 +1267,7 @@ def main():
     parser.add_argument("-j", "--json", help="Use the JSON files instead of the BSON files", action="store_true", required=False)
     parser.add_argument("-d", "--debug", help="Display debug messages", action="store_true", required=False)
     parser.add_argument("-t", "--task", help="Process existing task", action="store_true", required=False)
+    parser.add_argument("-g", "--graphs", help="Show graphs whilst running", action="store_true", required=False)
     args = parser.parse_args()
 
     if args.debug:
@@ -1368,7 +1369,7 @@ def main():
         if results["malware_found"]:
             print "Analyzer '%s' found:" % analyzer.name
             # Show subgraph with relevant data
-            if results["graph"]:
+            if results["graph"] and args.graphs:
                 for subgraph in results["graph"]:
                     subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
                     layout_graph = subgraph.layout("kk")
@@ -1385,8 +1386,9 @@ def main():
 
     os.system("sfdp -Goverlap=prism -Tpdf -o {1} {0}".format(dot_path, pdf_path))
 
-    layout_graph = graph.layout("kk")
-    plot(graph, bbox=(3000,3000), layout=layout_graph)
+    if args.graphs:
+        layout_graph = graph.layout("kk")
+        plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
