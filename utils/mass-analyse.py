@@ -19,10 +19,11 @@ sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), ".."))
 from lib.cuckoo.common.config import Config
 from lib.cuckoo.common.constants import CUCKOO_ROOT
 from lib.cuckoo.core.database import Database
-from lib.cuckoo.core.database import TASK_REPORTED, TASK_FAILED_ANALYSIS, TASK_FAILED_PROCESSING
+from lib.cuckoo.core.database import TASK_COMPLETED, TASK_REPORTED, TASK_FAILED_ANALYSIS, TASK_FAILED_PROCESSING
 from lib.cuckoo.core.startup import init_modules
 from lib.cuckoo.common.colors import bold, red, green, yellow
 from modules.processing.behavior import Processes
+from lib.cuckoo.common.utils import create_folder
 
 
 class Registry_Event_Handler(object):
@@ -1324,7 +1325,10 @@ def main():
         print(bold(green("Success")) + u": Created task with ID {0}; Now wait for completion...".format(task_id))
 
     while True and not skip_waiting:
-        if db.view_task(task_id).status == TASK_REPORTED:
+        if args.json and db.view_task(task_id).status == TASK_REPORTED:
+            print(bold(green("Success")) + u": Task completed!")
+            break
+        elif not args.json and db.view_task(task_id).status == TASK_COMPLETED:
             print(bold(green("Success")) + u": Task completed!")
             break
         elif db.view_task(task_id).status == TASK_FAILED_ANALYSIS or db.view_task(
@@ -1376,8 +1380,13 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
-    dot_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
-    pdf_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.pdf")
+    report_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports")
+
+    # Make sure reports folder exists
+    create_folder(folder=report_path)
+
+    dot_path = os.path.join(report_path, "report.dot")
+    pdf_path = os.path.join(report_path, "report.pdf")
 
     graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
     graph.write(dot_path)
