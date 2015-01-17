@@ -303,7 +303,6 @@ class AbstractEventProcessor(object):
         self.event_handler = event_handler
 
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
-        '''Call this when a new process spawns'''
         self.event_handler.on_process_new(parent_id, process_name, process_id, first_seen)
 
     def on_process_finished(self, process_id):
@@ -311,9 +310,6 @@ class AbstractEventProcessor(object):
 
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
-        '''Call this for every event that happens.
-                   event: expects a call dict
-                   pid: the pid where the call happened'''
         self.event_handler.on_api_call(timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id)
 
@@ -338,43 +334,48 @@ class AbstractEventProcessor(object):
     def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
         self.event_handler.on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
 
+    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
+        self.event_handler.on_anomaly_detected(process_id, subcategory, function_name)
 
 class NullEventProcessor(AbstractEventProcessor):
-        def __init__(self):
-            pass
+    def __init__(self):
+        pass
 
-        def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
-            pass
+    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
+        pass
 
-        def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned,
-                             command, classname, shell_command):
-            pass
+    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned,
+                         command, classname, shell_command):
+        pass
 
-        def on_registry_set(self, timestamp, process_id, thread_id, key, value):
-            pass
+    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
+        pass
 
-        def on_registry_delete(self, timestamp, process_id, thread_id, key):
-            pass
+    def on_registry_delete(self, timestamp, process_id, thread_id, key):
+        pass
 
-        def on_process_finished(self, process_id):
-            pass
+    def on_process_finished(self, process_id):
+        pass
 
-        def on_process_new(self, parent_id, process_name, process_id, first_seen):
-            pass
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        pass
 
-        def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
-                            http_response_data):
-            pass
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
+                        http_response_data):
+        pass
 
-        def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
-            pass
+    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
+        pass
 
-        def on_file_delete(self, timestamp, process_id, thread_id, path):
-            pass
+    def on_file_delete(self, timestamp, process_id, thread_id, path):
+        pass
 
-        def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
-                        arguments, call_id):
-            pass
+    def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
+                    arguments, call_id):
+        pass
+
+    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
+        pass
 
 
 class UnknownApiCallException(Exception):
@@ -427,7 +428,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
         elif category == "services":
             callback = self.__process_ignored_event
         elif category == "__notification__":
-            callback = self.__process_ignored_event
+            callback = self.__process_notification_event
         else:
             callback = self.__process_unknown_event
 
@@ -460,6 +461,10 @@ class EventAggregateProcessor(AbstractEventProcessor):
     def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         print http_verb + " " + http_url
         super(EventAggregateProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
+
+    def on_anomaly_detected(self, timestamp, process_id, subcategory, function_name):
+        print "Anomaly detected: %s of %s" % (subcategory, function_name)
+        super(EventAggregateProcessor, self).on_anomaly_detected(timestamp, process_id, subcategory, function_name)
 
     @staticmethod
     def __process_unknown_event(timestamp, process_id, category, status, return_value, thread_id, repeated, api,
@@ -733,6 +738,11 @@ class EventAggregateProcessor(AbstractEventProcessor):
             __filesystem_state["handles"].remove(file_handle)
             del __filesystem_state["handle_state"][file_handle]
 
+    def __process_notification_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
+                               api, arguments, call_id):
+        if api == "__anomaly__":
+            self.on_anomaly_detected(timestamp, process_id, arguments["Subcategory"], arguments["FunctionName"])
+
     __state = {}
 
     def __get_state_for_pid(self, process_id):
@@ -793,6 +803,9 @@ class EventReorderProcessor(AbstractEventProcessor):
 
     def on_socket_connect(self, timestamp, process_id, *args):
         heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_file_write, (timestamp, process_id) + args))
+
+    def on_anomaly_detected(self, timestamp, process_id, *args):
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_anomaly_detected, (timestamp, process_id) + args))
 
 
 class EventGraphGenerator(AbstractEventProcessor):
@@ -1355,11 +1368,11 @@ def main():
         if results["malware_found"]:
             print "Analyzer '%s' found:" % analyzer.name
             # Show subgraph with relevant data
-            # if results["graph"]:
-            #     for subgraph in results["graph"]:
-            #         subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
-            #         layout_graph = subgraph.layout("kk")
-            #         plot(subgraph, bbox=(3000,3000), layout=layout_graph)
+            if results["graph"]:
+                for subgraph in results["graph"]:
+                    subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
+                    layout_graph = subgraph.layout("kk")
+                    plot(subgraph, bbox=(3000,3000), layout=layout_graph)
         else:
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
@@ -1372,8 +1385,8 @@ def main():
 
     os.system("sfdp -Goverlap=prism -Tpdf -o {1} {0}".format(dot_path, pdf_path))
 
-    # layout_graph = graph.layout("kk")
-    # plot(graph, bbox=(3000,3000), layout=layout_graph)
+    layout_graph = graph.layout("kk")
+    plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
