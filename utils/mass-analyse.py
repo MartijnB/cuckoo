@@ -253,8 +253,8 @@ class Subprocess_from_tab(Detecter):
 
     def analyze_graph(self, graph):
         return_value = {"malware_found":False,"graph":False}
-        # Get all vertices of event "on_new_process"		
-        new_process_events = graph.vs.select(type_eq="on_new_process")
+        # Get all vertices of event "on_process_new"
+        new_process_events = graph.vs.select(type_eq="on_process_new")
         for vertex in new_process_events:
             # Check process depth
             print "Getting vertices to root..."
@@ -300,9 +300,9 @@ class AbstractEventProcessor(object):
 
         self.event_handler = event_handler
 
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
         '''Call this when a new process spawns'''
-        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
+        self.event_handler.on_process_new(parent_id, process_name, process_id, first_seen)
 
     def on_process_finished(self, process_id):
         self.event_handler.on_process_finished(process_id)
@@ -357,7 +357,7 @@ class NullEventProcessor(AbstractEventProcessor):
         def on_process_finished(self, process_id):
             pass
 
-        def on_new_process(self, parent_id, process_name, process_id, first_seen):
+        def on_process_new(self, parent_id, process_name, process_id, first_seen):
             pass
 
         def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
@@ -394,8 +394,8 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
         self.registry = Registry_Event_Handler()
 
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        super(EventAggregateProcessor, self).on_new_process(parent_id, process_name, process_id, first_seen)
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        super(EventAggregateProcessor, self).on_process_new(parent_id, process_name, process_id, first_seen)
 
         print "New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id)
 
@@ -760,8 +760,8 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
 
 class EventReorderProcessor(AbstractEventProcessor):
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        super(EventReorderProcessor, self).on_new_process(parent_id, process_name, process_id, first_seen)
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        super(EventReorderProcessor, self).on_process_new(parent_id, process_name, process_id, first_seen)
 
     def on_process_finished(self, process_id):
         super(EventReorderProcessor, self).on_process_finished(process_id)
@@ -802,12 +802,12 @@ class EventGraphGenerator(AbstractEventProcessor):
     first_get_of_process = {} # Process ID -> Unique ID
     id_counter = 0
 
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        print "GRAPH: on_new_process(%s, %s, %s, %s)" % (parent_id, process_name, process_id, first_seen)
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        print "GRAPH: on_process_new(%s, %s, %s, %s)" % (parent_id, process_name, process_id, first_seen)
         # Check if parent process exists in graph
         try:
             print "GRAPH: finding process parent..."
-            parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_new_process")
+            parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_process_new")
             print "GRAPH: at least it didn't crash..."
             if len(parents) == 1:
                 print "GRAPH: Found the parent!"
@@ -817,7 +817,7 @@ class EventGraphGenerator(AbstractEventProcessor):
                 self.graph.vs[vertex_id]["id"] = self.id_counter
                 self.graph.vs[vertex_id]["pid"] = process_id
                 self.graph.vs[vertex_id]["thread_id"] = 0
-                self.graph.vs[vertex_id]["type"] = "on_new_process"
+                self.graph.vs[vertex_id]["type"] = "on_process_new"
                 self.graph.vs[vertex_id]["label"] = "Process: " + process_name
                 self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
@@ -853,7 +853,7 @@ class EventGraphGenerator(AbstractEventProcessor):
             self.graph.vs[0]["id"] = self.id_counter
             self.graph.vs[0]["pid"] = parent_id
             self.graph.vs[0]["thread_id"] = 0
-            self.graph.vs[0]["type"] = "on_new_process"
+            self.graph.vs[0]["type"] = "on_process_new"
             self.graph.vs[0]["label"] = "Process: " + str(parent_id)
             self.graph.vs[0]["data"] = {"name":"Cuckoo Analyzer","timestamp":first_seen,"parent_id":0}
             self.id_counter += 1
@@ -863,7 +863,7 @@ class EventGraphGenerator(AbstractEventProcessor):
             self.graph.vs[1]["id"] = self.id_counter
             self.graph.vs[1]["pid"] = process_id
             self.graph.vs[1]["thread_id"] = 0
-            self.graph.vs[1]["type"] = "on_new_process"
+            self.graph.vs[1]["type"] = "on_process_new"
             self.graph.vs[1]["label"] = "Process: " + process_name
             self.graph.vs[1]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
@@ -889,10 +889,10 @@ class EventGraphGenerator(AbstractEventProcessor):
         if not process_id in self.latest_get_per_process:
             print "GRAPH: There hasn't been an HTTP request yet"
             # There hasn't been an HTTP Request yet...
-            # Hang it below the "on_new_process"
+            # Hang it below the "on_process_new"
 
-            # Lookup "on_new_process" met dezelfde process_id
-            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            # Lookup "on_process_new" met dezelfde process_id
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
             if len(parents) == 1:
                 parent = parents[0]
                 
@@ -1049,7 +1049,7 @@ class EventGraphGenerator(AbstractEventProcessor):
         else: # No HTTP Request has been seen for this process :(
             if process_id in [3984, 3952, 3820, 2304]:
                 print "GRAPH: \tuhu"
-            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_new_process")
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
             if len(parents) == 1:
                 parent = parents[0]
                 self.graph.add_edges([(int(parent.index), int(vertex_id))])
@@ -1071,7 +1071,7 @@ class AbstractLogProcessorEventHandler:
     def __init__(self):
         pass
 
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
         pass
 
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
@@ -1111,7 +1111,7 @@ class JSONLogProcessor(AbstractLogProcessor):
     def parse_events(self, max_events_to_process=-1):
         # Report new process
         if self.current_process_calls_index == 0:
-            self.event_handler.on_new_process(self.current_process_data["parent_id"],
+            self.event_handler.on_process_new(self.current_process_data["parent_id"],
                                               self.current_process_data["process_name"],
                                               self.current_process_data["process_id"],
                                               self.current_process_data["first_seen"])
@@ -1154,8 +1154,8 @@ class EventLogPreProcessHandler(AbstractLogProcessorEventHandler):
     def __init__(self, event_handler):
         self.event_handler = event_handler
 
-    def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
+    def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        self.event_handler.on_process_new(parent_id, process_name, process_id, first_seen)
 
     def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
@@ -1255,7 +1255,7 @@ def main():
         "on_file_delete": "blue",
         "on_file_write": "blue", 
         "on_socket_connect":"red",
-        "on_new_process":"red",
+        "on_process_new":"red",
         "on_registry_delete":"green",
         "on_registry_set":"green",
         "on_http_request":"yellow",
