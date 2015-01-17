@@ -293,38 +293,86 @@ def parse_handle(handle):
         return int(handle)
 
 
-class AbstractProcessAnalyser(object):
+class AbstractEventProcessor(object):
+    def __init__(self, event_handler=None):
+        if not event_handler:
+            event_handler = NullEventProcessor()
+
+        self.event_handler = event_handler
+
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         '''Call this when a new process spawns'''
-        pass
+        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
 
-    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+    def on_process_finished(self, process_id):
+        self.event_handler.on_process_finished(process_id)
+
+    def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
         '''Call this for every event that happens.
                    event: expects a call dict
                    pid: the pid where the call happened'''
-        pass
+        self.event_handler.on_api_call(timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
+                    call_id)
 
-    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
-        pass
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+        self.event_handler.on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
 
-    def on_file_write(self, process_id, thread_id, path, data, offset):
-        pass
+    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
+        self.event_handler.on_file_write(timestamp, process_id, thread_id, path, data, offset)
 
-    def on_file_delete(self, process_id, thread_id, path):
-        pass
+    def on_file_delete(self, timestamp, process_id, thread_id, path):
+        self.event_handler.on_file_delete(timestamp, process_id, thread_id, path)
 
-    def on_registry_set(self, process_id, thread_id, key, value):
-        pass
+    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
+        self.event_handler.on_registry_set(timestamp, process_id, thread_id, key, value)
 
-    def on_registry_delete(self, process_id, thread_id, key):
-        pass
+    def on_registry_delete(self, timestamp, process_id, thread_id, key):
+        self.event_handler.on_registry_delete(timestamp, process_id, thread_id, key)
 
-    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
-        pass
+    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
+        self.event_handler.on_shell_execute(timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
 
-    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
-        pass
+    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
+        self.event_handler.on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
+
+
+class NullEventProcessor(AbstractEventProcessor):
+        def __init__(self):
+            pass
+
+        def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
+            pass
+
+        def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned,
+                             command, classname, shell_command):
+            pass
+
+        def on_registry_set(self, timestamp, process_id, thread_id, key, value):
+            pass
+
+        def on_registry_delete(self, timestamp, process_id, thread_id, key):
+            pass
+
+        def on_process_finished(self, process_id):
+            pass
+
+        def on_new_process(self, parent_id, process_name, process_id, first_seen):
+            pass
+
+        def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
+                            http_response_data):
+            pass
+
+        def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
+            pass
+
+        def on_file_delete(self, timestamp, process_id, thread_id, path):
+            pass
+
+        def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
+                        arguments, call_id):
+            pass
 
 
 class UnknownApiCallException(Exception):
@@ -335,18 +383,26 @@ class ApiStateException(Exception):
     pass
 
 
-class AggregateProcessAnalyser(AbstractProcessAnalyser):
+class EventAggregateProcessor(AbstractEventProcessor):
+    def __init__(self):
+        super(EventAggregateProcessor, self).__init__()
+
+        self.registry = Registry_Event_Handler()
+
     def __init__(self, event_handler):
-        self.event_handler = event_handler
+        super(EventAggregateProcessor, self).__init__(event_handler=event_handler)
+
         self.registry = Registry_Event_Handler()
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
-        self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
+        super(EventAggregateProcessor, self).on_new_process(parent_id, process_name, process_id, first_seen)
 
         print "New process: {0} (pid: {1}, parent_id: {2})".format(process_name, process_id, parent_id)
 
-    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+    def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
+        super(EventAggregateProcessor, self).on_api_call(timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments, call_id)
+
         # Ignore failed calls
         if not status:
             return
@@ -378,60 +434,58 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         else:
             callback = self.__process_unknown_event
 
-        callback(process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments, call_id)
+        callback(timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments, call_id)
 
-    def on_file_delete(self, process_id, thread_id, path):
+    def on_file_delete(self, timestamp, process_id, thread_id, path):
         print "Delete {0}".format(path)
-        self.event_handler.on_file_delete(process_id, thread_id, path) 
+        super(EventAggregateProcessor, self).on_file_delete(timestamp, process_id, thread_id, path)
 
-    def on_registry_set(self, process_id, thread_id, key, value):
+    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
         print "REGISTRY SET: %s = %s" % (key, value)
-        self.event_handler.on_registry_set(process_id, thread_id, key, value) 
+        super(EventAggregateProcessor, self).on_registry_set(timestamp, process_id, thread_id, key, value)
 
-    def on_registry_delete(self, process_id, thread_id, key):
+    def on_registry_delete(self, timestamp, process_id, thread_id, key):
         print "REGISTRY DELETE: %s" % key
-        self.event_handler.on_registry_delete(process_id, thread_id, key) 
-        # super(AggregateProcessAnalyser, self).on_registry_delete()
+        super(EventAggregateProcessor, self).on_registry_delete(timestamp, process_id, thread_id, key)
 
-    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
+    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
         print "SHELL COMMAND: %s" % command
-        self.event_handler.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
-        # super(AggregateProcessAnalyser, self).on_shell_execute()
+        super(EventAggregateProcessor, self).on_shell_execute(timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
 
-    def on_file_write(self, process_id, thread_id, path, data, offset):
+    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
         print "Write data to {0}".format(path)
-        self.event_handler.on_file_write(process_id, thread_id, path, data, offset)
+        super(EventAggregateProcessor, self).on_file_write(timestamp, process_id, thread_id, path, data, offset)
 
-    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
+    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
         print "Connect to " + ip + ":" + str(port)
-        self.event_handler.on_socket_connect(process_id, thread_id, socket_id, ip, port)
+        super(EventAggregateProcessor, self).on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
 
-    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         print http_verb + " " + http_url
-        self.event_handler.on_http_request(process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
+        super(EventAggregateProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
 
     @staticmethod
-    def __process_unknown_event(process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+    def __process_unknown_event(timestamp, process_id, category, status, return_value, thread_id, repeated, api,
                                 arguments, call_id):
         raise UnknownApiCallException("Unknown API category: " + category)
 
     @staticmethod
-    def __process_ignored_event(process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+    def __process_ignored_event(timestamp, process_id, category, status, return_value, thread_id, repeated, api,
                                 arguments, call_id):
         pass
 
-    def __process_registry_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+    def __process_registry_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
                                  arguments, call_id):
         event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated,
                                           api, arguments, call_id)
         if event:
             # Call on_registry_delete() or on_registry_set
             if event["type"] == "set":
-                self.on_registry_set(process_id, thread_id, event["key"], event["value"])
+                self.on_registry_set(timestamp, process_id, thread_id, event["key"], event["value"])
             elif event["type"] == "deleted":
-                self.on_registry_delete(process_id, thread_id, event["key"])
+                self.on_registry_delete(timestamp, process_id, thread_id, event["key"])
 
-    def __process_socket_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+    def __process_socket_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
                                arguments, call_id):
         __socket_state = self.__get_state_for_pid(process_id)["socket"]
 
@@ -450,7 +504,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             if socket_id not in __socket_state["sockets"]:
                 raise ApiStateException("Socket {0} is not yet created in this process!".format(socket_id))
 
-            self.on_socket_connect(process_id, thread_id, socket_id, arguments["ip"], int(arguments["port"]))
+            self.on_socket_connect(timestamp, process_id, thread_id, socket_id, arguments["ip"], int(arguments["port"]))
         elif api == "closesocket" or api == "shutdown":
             socket_id = parse_handle(arguments["socket"])
 
@@ -461,7 +515,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
 
             __socket_state["sockets"].remove(socket_id)
 
-    def __process_network_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api,
+    def __process_network_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api,
                                 arguments, call_id):
         __network_state = self.__get_state_for_pid(process_id)["network"]
 
@@ -566,7 +620,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
                                __network_state["handle_state"][session_handle]["server_name"] + \
                                __network_state["handle_state"][handle]["path"]
 
-                self.on_http_request(process_id, thread_id, http_verb, http_url, None, http_response_data)
+                self.on_http_request(timestamp, process_id, thread_id, http_verb, http_url, None, http_response_data)
 
             # print "CloseHandle {0} ({1})".format(handle, __network_state["handle_state"][handle]["type"])
 
@@ -595,7 +649,7 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             __network_state["handle_state"][request_handle]["data"] = \
                 __network_state["handle_state"][request_handle]["data"] + arguments["Buffer"]
 
-    def __process_filesystem_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+    def __process_filesystem_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                    api, arguments, call_id):
         __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
 
@@ -643,11 +697,11 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         elif api == "DeleteFileA" or api == "DeleteFileW":
             file_path = arguments["FileName"]
 
-            self.on_file_delete(process_id, thread_id, file_path)
+            self.on_file_delete(timestamp, process_id, thread_id, file_path)
         else:
             print api
 
-    def __process_process_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+    def __process_process_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                api, arguments, call_id):
         if api == "ShellExecuteExA" or api == "ShellExecuteExW":
             print "GRAPH: hhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufuppelpuf"
@@ -657,9 +711,9 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
             command = arguments["Command"]
             classname = arguments["Class"]
             return_status = status
-            self.on_shell_execute(process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
+            self.on_shell_execute(timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command)
 
-    def __process_system_event(self, process_id, category, status, return_value, timestamp, thread_id, repeated,
+    def __process_system_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                api, arguments, call_id):
         __filesystem_state = self.__get_state_for_pid(process_id)["filesystem"]
 
@@ -671,7 +725,8 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
                 return
 
             if len(__filesystem_state["handle_state"][file_handle]["data"]) > 0:
-                self.on_file_write(process_id,
+                self.on_file_write(timestamp,
+                                   process_id,
                                    thread_id,
                                    __filesystem_state["handle_state"][file_handle]["path"],
                                    __filesystem_state["handle_state"][file_handle]["data"],
@@ -704,7 +759,41 @@ class AggregateProcessAnalyser(AbstractProcessAnalyser):
         return self.__state[process_id]
 
 
-class GraphGenerator(AbstractProcessAnalyser):
+class EventReorderProcessor(AbstractEventProcessor):
+    def on_new_process(self, parent_id, process_name, process_id, first_seen):
+        super(EventReorderProcessor, self).on_new_process(parent_id, process_name, process_id, first_seen)
+
+    def on_process_finished(self, process_id):
+        super(EventReorderProcessor, self).on_process_finished(process_id)
+
+    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
+        super(EventReorderProcessor, self).on_file_write(timestamp, process_id, thread_id, path, data, offset)
+
+    def on_file_delete(self, timestamp, process_id, thread_id, path):
+        super(EventReorderProcessor, self).on_file_delete(timestamp, process_id, thread_id, path)
+
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
+                        http_response_data):
+        super(EventReorderProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url,
+                                                           http_request_data, http_response_data)
+
+    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
+        super(EventReorderProcessor, self).on_registry_set(timestamp, process_id, thread_id, key, value)
+
+    def on_registry_delete(self, timestamp, process_id, thread_id, key):
+        super(EventReorderProcessor, self).on_registry_delete(timestamp, process_id, thread_id, key)
+
+    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned,
+                         command, classname, shell_command):
+        super(EventReorderProcessor, self).on_shell_execute(timestamp, process_id, thread_id, return_status,
+                                                            working_directory, process_spawned, command, classname,
+                                                            shell_command)
+
+    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
+        super(EventReorderProcessor, self).on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
+
+
+class EventGraphGenerator(AbstractEventProcessor):
     # The Graph :D
     graph = Graph(directed=True)
 
@@ -784,7 +873,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_http_request(self, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -829,7 +918,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.latest_get_per_process[process_id] = self.id_counter
         self.id_counter += 1
 
-    def on_file_write(self, process_id, thread_id, path, data, offset):
+    def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -846,7 +935,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_file_delete(self, process_id, thread_id, path):
+    def on_file_delete(self, timestamp, process_id, thread_id, path):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -861,7 +950,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_registry_set(self, process_id, thread_id, key, value):
+    def on_registry_set(self, timestamp, process_id, thread_id, key, value):
         if process_id in [3984, 3952, 3820, 2304]:
             print "GRAPH: on_registry_set: Subnode for malicious processes"
         # Create vertex
@@ -880,7 +969,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_registry_delete(self, process_id, thread_id, key):
+    def on_registry_delete(self, timestamp, process_id, thread_id, key):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -897,7 +986,7 @@ class GraphGenerator(AbstractProcessAnalyser):
 
         self.id_counter += 1
 
-    def on_socket_connect(self, process_id, thread_id, socket_id, ip, port):
+    def on_socket_connect(self, timestamp, process_id, thread_id, socket_id, ip, port):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -913,7 +1002,7 @@ class GraphGenerator(AbstractProcessAnalyser):
         self.id_counter += 1
 
 
-    def on_shell_execute(self, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
+    def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
         if process_id == 3820:
             print "GRAPH: dfshjsdgjhsdfhjkdhjkdgqhjdsfhjkdsghjkldfghjkdfghjdfgjhkdfghjk"
         # Create vertex
@@ -985,7 +1074,7 @@ class AbstractLogProcessorEventHandler:
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         pass
 
-    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+    def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
         pass
 
@@ -1031,11 +1120,11 @@ class JSONLogProcessor(AbstractLogProcessor):
             current_process_call = self.current_process_calls[self.current_process_calls_index]
 
             if max_events_to_process == -1 or max_events_to_process > 0:
-                self.event_handler.on_api_call(self.current_process_data["process_id"],
+                self.event_handler.on_api_call(current_process_call["timestamp"],
+                                               self.current_process_data["process_id"],
                                                current_process_call["category"],
                                                current_process_call["status"],
                                                current_process_call["return"],
-                                               current_process_call["timestamp"],
                                                current_process_call["thread_id"],
                                                current_process_call["repeated"],
                                                current_process_call["api"],
@@ -1061,20 +1150,20 @@ class JSONLogProcessor(AbstractLogProcessor):
             self.current_process_calls_len = len(self.current_process_calls)
 
 
-class DAGLogProcessorEventHandler(AbstractLogProcessorEventHandler):
-    def __init__(self, dag_event_handler):
-        self.event_handler = dag_event_handler
+class EventLogPreProcessHandler(AbstractLogProcessorEventHandler):
+    def __init__(self, event_handler):
+        self.event_handler = event_handler
 
     def on_new_process(self, parent_id, process_name, process_id, first_seen):
         self.event_handler.on_new_process(parent_id, process_name, process_id, first_seen)
 
-    def on_api_call(self, process_id, category, status, return_value, timestamp, thread_id, repeated, api, arguments,
+    def on_api_call(self, timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id):
         new_arguments = {}
         for arg in arguments:
             new_arguments[arg["name"]] = arg["value"]
 
-        self.event_handler.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated,
+        self.event_handler.on_api_call(timestamp, process_id, category, status, return_value, thread_id, repeated,
                                        api, new_arguments, call_id)
 
 
@@ -1154,8 +1243,8 @@ def main():
 
     log.info("Parse log....")
 
-    graph_generator = GraphGenerator()
-    log_processor = JSONLogProcessor(task_id, DAGLogProcessorEventHandler(AggregateProcessAnalyser(graph_generator)))
+    graph_generator = EventGraphGenerator()
+    log_processor = JSONLogProcessor(task_id, EventLogPreProcessHandler(EventAggregateProcessor(EventReorderProcessor(graph_generator))))
 
     while log_processor.has_more_events():
         log_processor.parse_events()
@@ -1179,17 +1268,17 @@ def main():
         if results["malware_found"]:
             print "Analyzer '%s' found:" % analyzer.name
             # Show subgraph with relevant data
-            if results["graph"]:
-                for subgraph in results["graph"]:
-                    subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
-                    layout_graph = subgraph.layout("kk")
-                    plot(subgraph, bbox=(3000,3000), layout=layout_graph)
+            # if results["graph"]:
+            #     for subgraph in results["graph"]:
+            #         subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
+            #         layout_graph = subgraph.layout("kk")
+            #         plot(subgraph, bbox=(3000,3000), layout=layout_graph)
         else:
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
-    graph.write(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
     graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
+    graph.write(os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot"))
     layout_graph = graph.layout("kk")
     plot(graph, bbox=(3000,3000), layout=layout_graph)
 
