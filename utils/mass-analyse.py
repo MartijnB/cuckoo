@@ -1364,10 +1364,16 @@ def main():
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
     # Show graph - used for debugging right now...
+    dot_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot")
+    pdf_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.pdf")
+
     graph.vs["color"] = [color_dict[typez] for typez in graph.vs["type"]]
-    graph.write(os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports", "report.dot"))
-    layout_graph = graph.layout("kk")
-    plot(graph, bbox=(3000,3000), layout=layout_graph)
+    graph.write(dot_path)
+
+    os.system("sfdp -Goverlap=prism -Tpdf -o {1} {0}".format(dot_path, pdf_path))
+
+    # layout_graph = graph.layout("kk")
+    # plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
     cfg = Config()
