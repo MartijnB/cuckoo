@@ -796,7 +796,7 @@ class EventReorderProcessor(AbstractEventProcessor):
         heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_shell_execute, (timestamp, process_id) + args))
 
     def on_socket_connect(self, timestamp, process_id, *args):
-        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_file_write, (timestamp, process_id) + args))
+        heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_socket_connect, (timestamp, process_id) + args))
 
     def on_anomaly_detected(self, timestamp, process_id, *args):
         heapq.heappush(self._process_event_queue_list[process_id], (timestamp, self.event_handler.on_anomaly_detected, (timestamp, process_id) + args))
