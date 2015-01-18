@@ -1066,7 +1066,7 @@ class EventGraphGenerator(AbstractEventProcessor):
         self.graph.vs[vertex_id]["pid"] = process_id
         self.graph.vs[vertex_id]["thread_id"] = thread_id
         self.graph.vs[vertex_id]["type"] = "on_anomaly_detected"
-        self.graph.vs[vertex_id]["label"] = ""
+        self.graph.vs[vertex_id]["label"] = None
         self.graph.vs[vertex_id]["data"] = {"category":subcategory,"function_name":function_name}
 
         self.put_under_http_or_process(process_id, vertex_id)
