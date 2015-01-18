@@ -199,7 +199,7 @@ class Detecter(object):
         childs = graph.neighbors(vertex_id, mode=OUT)
         return childs
 
-    # Returns a list of vertex IDs from the vertex to the root node (excl. vertex)
+    # Returns a list of vertex IDs from the vertex to the root node (excl. vertex and the root node)
     def vertex_to_root(self, vertex):
         list_of_vertices = []
         parent_index = self.get_parent(vertex)
@@ -241,8 +241,13 @@ class Subprocess_from_tab(Detecter):
                 return_value["explanation"] = "Found a process spawn underneath a Tab process of Internet Explorer, which is very unusual"
 
                 # Create subgraph
-                all_relevant_vertices = [vertex.index]
+                all_relevant_vertices = [vertex.index, 0]
                 all_relevant_vertices.extend(vertices_to_root)
+                for vid in vertices_to_root:
+                    vertex = graph.vs[vid]
+                    if vertex["type"] == "on_process_new":
+                        for i in graph.vs.select(pid_eq=vertex["pid"]):
+                            all_relevant_vertices.append(i.index)
                 all_relevant_vertices.extend(self.get_childs_of_vertex(graph, vertex))
                 # http://www.saltycrane.com/blog/2008/01/how-to-find-intersection-and-union-of/
                 malicious_vertices = (set(malicious_vertices) | set(all_relevant_vertices))
