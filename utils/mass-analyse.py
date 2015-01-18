@@ -850,8 +850,21 @@ class EventGraphGenerator(AbstractEventProcessor):
                     self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
                 elif parent["data"]["name"] != "iexplore.exe":
                     print "GRAPH: parent is geen tabje..."
-                    # Hang it directly below this process
-                    self.graph.add_edges([(int(parent.index), int(vertex_id))])
+                    
+                    # Try to find a matching name in the file write events to link a process spawn to a file
+                    matching_file = None
+                    vertexseq = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_file_write")
+                    for vertex in vertexseq:
+                        file_path = vertex["data"]["path"]
+                        if process_name in file_path:
+                            # Sweet, we got a match with a filename 
+                            matching_file = vertex
+                            break
+
+                    if matching_file: # Hang process below this file
+                        self.graph.add_edges([(int(matching_file.index), int(vertex_id))])
+                    else: # Hang it directly below this process
+                        self.graph.add_edges([(int(parent.index), int(vertex_id))])
                 else:
                     print "GRAPH: Oh oh, I didn't cover this case..."
             else:
@@ -963,11 +976,23 @@ class EventGraphGenerator(AbstractEventProcessor):
         #self.graph.vs[vertex_id]["label"] = "Written to " + path
         self.graph.vs[vertex_id]["data"] = {"path":path,"data":data,"offset":offset}
 
-        # Put it under the latest HTTP Request
-        # or directly under the process if there was no HTTP Request
-        self.put_under_http_or_process(process_id, vertex_id)
+        # Try to find the matching URL for the file, the data has to come from the interwebz
+        # If it fails, put it under the latest HTTP Request
+        matching_url = None
+        vertexseq = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_http_request")
+        for vertex in vertexseq:
+            url_data = vertex["data"]["response"]
+            if data in url_data:
+                matching_url = vertex
+                break
+        
+        if matching_url:
+            self.graph.add_edges([(int(matching_url.index), int(vertex_id))])
+        else:
+            self.put_under_http_or_process(process_id, vertex_id)
 
         self.id_counter += 1
+
 
     def on_file_delete(self, timestamp, process_id, thread_id, path):
         # Create vertex
