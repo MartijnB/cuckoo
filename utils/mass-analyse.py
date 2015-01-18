@@ -197,23 +197,17 @@ class Detecter(object):
 
     def get_childs(self, graph, vertex_id):
         childs = graph.neighbors(vertex_id, mode=OUT)
-        print "Childs of VID %i:" % vertex_id
-        print childs
         return childs
 
     # Returns a list of vertex IDs from the vertex to the root node (excl. vertex)
     def vertex_to_root(self, vertex):
         list_of_vertices = []
-        print "Finding parent of vertex ID %i (PID %i)" % (vertex.index, vertex["pid"])
         parent_index = self.get_parent(vertex)
-        print "Parent index is %i" % parent_index
         if parent_index:
             parent = vertex.graph.vs[parent_index]
             while(parent):
                 list_of_vertices.append(parent.index)
-                print "Finding parent of vertex ID %i (Process %i)" % (parent.index, parent["pid"])
                 parent_index = self.get_parent(parent)
-                print "Parent index is %i" % parent_index
                 if parent_index:
                     parent = vertex.graph.vs[parent_index]
                 else:
@@ -227,9 +221,6 @@ class Detecter(object):
             parent = neighbors[0]
             return parent
         else:
-            print "List of neighbors is %i long" % len(neighbors)
-            print "Process information of this vertex:"
-            print "\tProcess ID: %i\n\tParent ID: %i\n\tProcess name:%s" % (vertex["pid"], vertex["data"]["parent_id"], vertex["data"]["name"])
             return False
 
 class Subprocess_from_tab(Detecter):
@@ -242,24 +233,17 @@ class Subprocess_from_tab(Detecter):
         malicious_vertices = []
         for vertex in new_process_events:
             # Check process depth
-            print "Getting vertices to root..."
             vertices_to_root = self.vertex_to_root(vertex)
-            print vertices_to_root
 
             if len(vertices_to_root) > 1:
                 # Oh oh, we found a process two levels deep or lower *runs around*
-                print "Oh oh, we found a process two levels deep or lower *runs around*"
                 return_value["malware_found"] = True
                 return_value["explanation"] = "Found a process spawn underneath a Tab process of Internet Explorer, which is very unusual"
 
                 # Create subgraph
                 all_relevant_vertices = [vertex.index]
                 all_relevant_vertices.extend(vertices_to_root)
-                print "Getting list of all childs of vertex..."
                 all_relevant_vertices.extend(self.get_childs_of_vertex(graph, vertex))
-                print "Create subgraph..."
-                print "Relevant subvertices:"
-                print all_relevant_vertices
                 # http://www.saltycrane.com/blog/2008/01/how-to-find-intersection-and-union-of/
                 malicious_vertices = (set(malicious_vertices) | set(all_relevant_vertices))
 
@@ -295,8 +279,8 @@ class AbstractEventProcessor(object):
         self.event_handler.on_api_call(timestamp, process_id, category, status, return_value, thread_id, repeated, api, arguments,
                     call_id)
 
-    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
-        self.event_handler.on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers):
+        self.event_handler.on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers)
 
     def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
         self.event_handler.on_file_write(timestamp, process_id, thread_id, path, data, offset)
@@ -343,7 +327,7 @@ class NullEventProcessor(AbstractEventProcessor):
         pass
 
     def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data,
-                        http_response_data):
+                        http_response_data, http_headers):
         pass
 
     def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
@@ -440,9 +424,9 @@ class EventAggregateProcessor(AbstractEventProcessor):
         print "Connect to " + ip + ":" + str(port)
         super(EventAggregateProcessor, self).on_socket_connect(timestamp, process_id, thread_id, socket_id, ip, port)
 
-    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers):
         print http_verb + " " + http_url
-        super(EventAggregateProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data)
+        super(EventAggregateProcessor, self).on_http_request(timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers)
 
     def on_anomaly_detected(self, timestamp, process_id, thread_id,  subcategory, function_name):
         print "Anomaly detected: %s of %s" % (subcategory, function_name)
@@ -463,7 +447,6 @@ class EventAggregateProcessor(AbstractEventProcessor):
         event = self.registry.on_api_call(process_id, category, status, return_value, timestamp, thread_id, repeated,
                                           api, arguments, call_id)
         if event:
-            # Call on_registry_delete() or on_registry_set
             if event["type"] == "set":
                 self.on_registry_set(timestamp, process_id, thread_id, event["key"], event["value"])
             elif event["type"] == "deleted":
@@ -604,8 +587,12 @@ class EventAggregateProcessor(AbstractEventProcessor):
                     http_url = protocol_handler + \
                                __network_state["handle_state"][session_handle]["server_name"] + \
                                __network_state["handle_state"][handle]["path"]
+    
+                http_headers = {}
+                if "headers" in __network_state["handle_state"][handle]:
+                    http_headers = __network_state["handle_state"][handle]["headers"]
 
-                self.on_http_request(__network_state["handle_state"][handle]["timestamp"], process_id, thread_id, http_verb, http_url, None, http_response_data)
+                self.on_http_request(__network_state["handle_state"][handle]["timestamp"], process_id, thread_id, http_verb, http_url, None, http_response_data, http_headers)
 
             # print "CloseHandle {0} ({1})".format(handle, __network_state["handle_state"][handle]["type"])
 
@@ -633,6 +620,34 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
             __network_state["handle_state"][request_handle]["data"] = \
                 __network_state["handle_state"][request_handle]["data"] + arguments["Buffer"]
+        elif api == "HttpSendRequestA" or api == "HttpSendRequestW":
+            request_handle = parse_handle(arguments["RequestHandle"])
+            if request_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][request_handle]["type"] != "request":
+                #raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
+                print "ALL HELL BREAKS LOOSE"
+
+            if len(arguments["Headers"]) > 1 and "headers" not in __network_state["handle_state"][request_handle]:
+                headers = arguments["Headers"].split("\r\n")
+                __network_state["handle_state"][request_handle]["headers"] = headers
+
+        elif api == "HttpAddRequestHeadersA" or api == "HttpAddRequestHeadersW":
+            request_handle = parse_handle(arguments["InternetHandle"])
+
+            if request_handle not in __network_state["handles"] \
+                    or __network_state["handle_state"][request_handle]["type"] != "request":
+                #raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
+                print "ALL HELL BREAKS LOOSE"
+
+            headers = {}
+            for header in arguments["Headers"].split("\r\n"):
+                if len(header) == 0:
+                    continue
+                h = header.split(":", 1)
+                headers[h[0]] = h[1].strip()
+                
+            __network_state["handle_state"][request_handle]["headers"] = headers
+            
 
     def __process_filesystem_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                    api, arguments, call_id):
@@ -870,7 +885,7 @@ class EventGraphGenerator(AbstractEventProcessor):
 
         self.id_counter += 1
 
-    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data):
+    def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
