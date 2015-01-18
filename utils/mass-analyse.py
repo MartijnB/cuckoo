@@ -239,6 +239,7 @@ class Subprocess_from_tab(Detecter):
         return_value = {"malware_found":False,"graph":False}
         # Get all vertices of event "on_process_new"
         new_process_events = graph.vs.select(type_eq="on_process_new")
+        malicious_vertices = []
         for vertex in new_process_events:
             # Check process depth
             print "Getting vertices to root..."
@@ -259,13 +260,11 @@ class Subprocess_from_tab(Detecter):
                 print "Create subgraph..."
                 print "Relevant subvertices:"
                 print all_relevant_vertices
-                if return_value["graph"]:
-                    return_value["graph"].append(graph.subgraph(all_relevant_vertices))
-                else:
-                    return_value["graph"] = [graph.subgraph(all_relevant_vertices)]
+                # http://www.saltycrane.com/blog/2008/01/how-to-find-intersection-and-union-of/
+                malicious_vertices = (set(malicious_vertices) | set(all_relevant_vertices))
 
-                # TODO: We might find multiple processes like this, that we find interesting: show them all in one graph...
-                # For now, let just break
+        if len(malicious_vertices) > 0:
+            return_value["graph"] = graph.subgraph(malicious_vertices)
 
         return return_value
 
@@ -1371,11 +1370,11 @@ def main():
         if results["malware_found"]:
             print "Analyzer '%s': %s" % (analyzer.name, results["explanation"])
             # Show subgraph with relevant data
-            if results["graph"] and args.graphs:
-                for subgraph in results["graph"]:
-                    subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
-                    layout_graph = subgraph.layout("kk")
-                    plot(subgraph, bbox=(3000,3000), layout=layout_graph)
+            subgraph = results["graph"]
+            if subgraph and args.graphs:
+                subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
+                layout_graph = subgraph.layout("kk")
+                plot(subgraph, bbox=(3000,3000), layout=layout_graph)
         else:
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
         
