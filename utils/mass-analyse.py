@@ -886,49 +886,71 @@ class EventGraphGenerator(AbstractEventProcessor):
         self.id_counter += 1
 
     def on_http_request(self, timestamp, process_id, thread_id, http_verb, http_url, http_request_data, http_response_data, http_headers):
+        if not process_id in self.latest_get_per_process: # There hasn't been an HTTP Request yet...
+            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", http_url, {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
+            # Hang it below the "on_process_new"
+            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+            if len(parents) == 1:
+                parent = parents[0]
+                # Create edge
+                self.graph.add_edges([(int(parent.index), int(vertex_id))])
+            
+            self.first_get_of_process[process_id] = self.graph.vs[vertex_id]["id"]
+        else: # There was already a HTTP Request
+            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", "", {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
+            if "Referer" in http_headers:
+                found_referer = False
+                # Get all HTTP Requests from this process
+                http_reqs = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_http_request")
+                for http_req in http_reqs:
+                    # Get URL from that request
+                    url = http_req["data"]["url"]
+                    # Check if equal to Referer
+                    if url == http_headers["Referer"]:
+                        # Hang new vertex below this one
+                        self.graph.add_edges([(int(http_req.index), int(vertex_id))])
+                        found_referer = True
+                        break
+
+                # If not found a matching referer -> make it
+                if not found_referer: 
+                    # Create referer
+                    referer_vertex_id = self.create_vertex(process_id, 0, "on_http_request", http_headers["Referer"], {"method":"GET","url":http_headers["Referer"],"request":"","headers_request":{},"response":""})
+                    # Hang referer to first request
+                    uid = self.first_get_of_process[process_id]
+                    vertexseq = self.graph.vs.select(id_eq=uid)
+                    if len(vertexseq) == 1:
+                        first_http = vertexseq[0]
+                        self.graph.add_edges([(int(first_http.index), int(referer_vertex_id))])
+
+                    # Hang original request to referer
+                    self.graph.add_edges([(int(referer_vertex_id), int(vertex_id))])
+
+
+            else: # No referer? Hang below first HTTP Request
+                uid = self.first_get_of_process[process_id]
+                vertexseq = self.graph.vs.select(id_eq=uid)
+                if len(vertexseq) == 1:
+                    first_http = vertexseq[0]
+                    self.graph.add_edges([(int(first_http.index), int(vertex_id))])
+
+
+        # Update dict met laatste HTTP request
+        self.latest_get_per_process[process_id] = self.graph.vs[vertex_id]["id"]
+
+    def create_vertex(self, pid, thread_id, typez, label, data):
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
         self.graph.vs[vertex_id]["id"] = self.id_counter
-        self.graph.vs[vertex_id]["pid"] = process_id
+        self.graph.vs[vertex_id]["pid"] = pid
         self.graph.vs[vertex_id]["thread_id"] = thread_id
-        self.graph.vs[vertex_id]["type"] = "on_http_request"
-        #self.graph.vs[vertex_id]["label"] = http_verb + " " + http_url
-        self.graph.vs[vertex_id]["data"] = {"method":http_verb,"url":http_url,"request":http_request_data,"response":http_response_data}
-
-        print self.first_get_of_process
-        print self.latest_get_per_process
-        if not process_id in self.latest_get_per_process:
-            print "GRAPH: There hasn't been an HTTP request yet"
-            # There hasn't been an HTTP Request yet...
-            # Hang it below the "on_process_new"
-
-            # Lookup "on_process_new" met dezelfde process_id
-            parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
-            if len(parents) == 1:
-                parent = parents[0]
-                
-                # Create edge
-                self.graph.add_edges([(int(parent.index), int(vertex_id))])
-            
-            self.first_get_of_process[process_id] = self.id_counter
-        else:
-            # There was already a HTTP Request
-            # Hang it below this first HTTP Request
-            
-            # Find that first HTTP request
-            uid = self.first_get_of_process[process_id]
-            vertexseq = self.graph.vs.select(id_eq=uid)
-            if len(vertexseq) == 1:
-                first_http = vertexseq[0]
-                
-                # Created edge
-                self.graph.add_edges([(int(first_http.index), int(vertex_id))])
-                        
-
-        # Update dict met laatste HTTP request
-        self.latest_get_per_process[process_id] = self.id_counter
+        self.graph.vs[vertex_id]["type"] = typez
+        self.graph.vs[vertex_id]["label"] = label
+        self.graph.vs[vertex_id]["data"] = data
         self.id_counter += 1
+
+        return vertex_id
 
     def on_file_write(self, timestamp, process_id, thread_id, path, data, offset):
         # Create vertex
@@ -1015,8 +1037,6 @@ class EventGraphGenerator(AbstractEventProcessor):
 
 
     def on_shell_execute(self, timestamp, process_id, thread_id, return_status, working_directory, process_spawned, command, classname, shell_command):
-        if process_id == 3820:
-            print "GRAPH: dfshjsdgjhsdfhjkdhjkdgqhjdsfhjkdsghjkldfghjkdfghjdfgjhkdfghjk"
         # Create vertex
         self.graph.add_vertex()
         vertex_id = len(self.graph.vs) - 1
@@ -1062,20 +1082,14 @@ class EventGraphGenerator(AbstractEventProcessor):
             raise Exception("Unique ID not found")
 
     def put_under_http_or_process(self, process_id, vertex_id):
-        if process_id in [3984, 3952, 3820, 2304]:
-            print "GRAPH: Subnode for malicious processes"
         # HTTP Request already exists
         if process_id in self.latest_get_per_process:
-            if process_id in [3984, 3952, 3820, 2304]:
-                print "GRAPH: \tuhu"
             uid = self.latest_get_per_process[process_id]
             vertexseq = self.graph.vs.select(id_eq=uid)
             if len(vertexseq) == 1:
                 get_request = vertexseq[0]
                 self.graph.add_edges([(int(get_request.index), int(vertex_id))])
         else: # No HTTP Request has been seen for this process :(
-            if process_id in [3984, 3952, 3820, 2304]:
-                print "GRAPH: \tuhu"
             parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
             if len(parents) == 1:
                 parent = parents[0]
