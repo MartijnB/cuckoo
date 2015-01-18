@@ -624,8 +624,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
             request_handle = parse_handle(arguments["RequestHandle"])
             if request_handle not in __network_state["handles"] \
                     or __network_state["handle_state"][request_handle]["type"] != "request":
-                #raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
-                print "ALL HELL BREAKS LOOSE"
+                raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
 
             if len(arguments["Headers"]) > 1 and "headers" not in __network_state["handle_state"][request_handle]:
                 headers = arguments["Headers"].split("\r\n")
@@ -636,8 +635,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
             if request_handle not in __network_state["handles"] \
                     or __network_state["handle_state"][request_handle]["type"] != "request":
-                #raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
-                print "ALL HELL BREAKS LOOSE"
+                raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
 
             headers = {}
             for header in arguments["Headers"].split("\r\n"):
@@ -704,7 +702,6 @@ class EventAggregateProcessor(AbstractEventProcessor):
     def __process_process_event(self, timestamp, process_id, category, status, return_value, thread_id, repeated,
                                api, arguments, call_id):
         if api == "ShellExecuteExA" or api == "ShellExecuteExW":
-            print "GRAPH: hhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufhuppelpufuppelpuf"
             process_spawned = arguments["ProcessSpawned"]
             working_directory = arguments["WorkingDirectory"]
             shell_command = arguments["FilePath"] + " " + arguments["Parameters"]
@@ -815,14 +812,10 @@ class EventGraphGenerator(AbstractEventProcessor):
     id_counter = 0
 
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
-        print "GRAPH: on_process_new(%s, %s, %s, %s)" % (parent_id, process_name, process_id, first_seen)
         # Check if parent process exists in graph
         try:
-            print "GRAPH: finding process parent..."
             parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_process_new")
-            print "GRAPH: at least it didn't crash..."
             if len(parents) == 1:
-                print "GRAPH: Found the parent!"
                 parent = parents[0]
                 self.graph.add_vertex()
                 vertex_id = len(self.graph.vs) - 1
@@ -833,24 +826,18 @@ class EventGraphGenerator(AbstractEventProcessor):
                 self.graph.vs[vertex_id]["label"] = "Process: " + process_name
                 self.graph.vs[vertex_id]["data"] = {"name":process_name,"timestamp":first_seen,"parent_id":parent_id}
 
-                print "GRAPH: Created vertex of new process"
-
                 # Distinguish between Tab processes and process spawned in tabs
                 # If it's a tab process then the name is "iexplore.exe" AND
                 # the parent vertex has no incoming edges
                 if parent.index == 0 and parent["data"]["name"] == "Cuckoo Analyzer":
-                    print "GRAPH: The parent is the root and it's process name is 'Cuckoo Analyzer'"
                     # It's a tab process, hang it below the parent
                     self.graph.add_edges([(int(parent.index), int(vertex_id))])
                 elif parent["data"]["name"] == "iexplore.exe" and len(parent.graph.neighbors(parent.index, mode=IN)) > 0:
-                    print "GRAPH: parent heeft de naam 'iexplore.exe' en heeft incoming edges"
                     # It's a process spawned by a tab
                     # Hang it below the latest GET from this tab
                     latest_get_from_tab = self.find_latest_get_from_tab(parent_id) 
                     self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
                 elif parent["data"]["name"] != "iexplore.exe":
-                    print "GRAPH: parent is geen tabje..."
-                    
                     # Try to find a matching name in the file write events to link a process spawn to a file
                     matching_file = None
                     vertexseq = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_file_write")
@@ -865,14 +852,7 @@ class EventGraphGenerator(AbstractEventProcessor):
                         self.graph.add_edges([(int(matching_file.index), int(vertex_id))])
                     else: # Hang it directly below this process
                         self.graph.add_edges([(int(parent.index), int(vertex_id))])
-                else:
-                    print "GRAPH: Oh oh, I didn't cover this case..."
-            else:
-                print "GRAPH: Found more than one parent, say wut..."
-        except KeyError as e:
-            # The Graph is empty
-            print "GRAPH: graph is empty..."
-
+        except KeyError as e: # The Graph is empty
             # Make root node
             self.graph.add_vertex()
             self.graph.vs[0]["id"] = self.id_counter
