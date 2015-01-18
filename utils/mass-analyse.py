@@ -897,7 +897,7 @@ class EventGraphGenerator(AbstractEventProcessor):
             
             self.first_get_of_process[process_id] = self.graph.vs[vertex_id]["id"]
         else: # There was already a HTTP Request
-            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", "", {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
+            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", None, {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
             if "Referer" in http_headers:
                 found_referer = False
                 # Get all HTTP Requests from this process
