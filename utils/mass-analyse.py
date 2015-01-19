@@ -1403,6 +1403,12 @@ def main():
         "on_shell_execute":"purple",
         "on_anomaly_detected":"black"
     }
+
+    # Show graph - used for debugging right now...
+    report_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports")
+
+    # Make sure reports folder exists
+    create_folder(folder=report_path)
     
     # Run Analyzers
     for analyzer in [Subprocess_from_tab()]:
@@ -1411,18 +1417,20 @@ def main():
             print "Analyzer '%s': %s" % (analyzer.name, results["explanation"])
             # Show subgraph with relevant data
             subgraph = results["graph"]
-            if subgraph and args.graphs:
+            if subgraph:
+                dot_path = os.path.join(report_path, "report_{0}.dot".format(analyzer.name))
+                pdf_path = os.path.join(report_path, "report_{0}.pdf".format(analyzer.name))
+
                 subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
-                layout_graph = subgraph.layout("kk")
-                plot(subgraph, bbox=(3000,3000), layout=layout_graph)
+                subgraph.write(dot_path)
+
+                os.system("sfdp -Goverlap=prism -Tpdf -o {1} {0}".format(dot_path, pdf_path))
+
+                if args.graphs:
+                    layout_graph = subgraph.layout("kk")
+                    plot(subgraph, bbox=(3000,3000), layout=layout_graph)
         else:
             print "Analyzer '%s' did not find anything interesting." % analyzer.name
-        
-    # Show graph - used for debugging right now...
-    report_path = os.path.join(CUCKOO_ROOT, "storage", "analyses", str(task_id), "reports")
-
-    # Make sure reports folder exists
-    create_folder(folder=report_path)
 
     dot_path = os.path.join(report_path, "report.dot")
     pdf_path = os.path.join(report_path, "report.pdf")
