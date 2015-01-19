@@ -817,6 +817,7 @@ class EventGraphGenerator(AbstractEventProcessor):
     id_counter = 0
 
     def on_process_new(self, parent_id, process_name, process_id, first_seen):
+        print "GRAPH: on_process_new('%s', '%s', '%s', '%s')" % (parent_id, process_name, process_id, first_seen)
         # Check if parent process exists in graph
         try:
             parents = self.graph.vs.select(pid_eq=parent_id).select(type_eq="on_process_new")
@@ -895,7 +896,7 @@ class EventGraphGenerator(AbstractEventProcessor):
             
             self.first_get_of_process[process_id] = self.graph.vs[vertex_id]["id"]
         else: # There was already a HTTP Request
-            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", None, {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
+            vertex_id = self.create_vertex(process_id, thread_id, "on_http_request", http_url, {"method":http_verb,"url":http_url,"request":http_request_data,"headers_request":http_headers,"response":http_response_data})
             if "Referer" in http_headers:
                 found_referer = False
                 # Get all HTTP Requests from this process
@@ -1394,12 +1395,12 @@ def main():
     color_dict = {
         "on_file_delete": "blue",
         "on_file_write": "blue", 
-        "on_socket_connect":"red",
+        "on_socket_connect":"orange",
         "on_process_new":"red",
         "on_registry_delete":"green",
         "on_registry_set":"green",
         "on_http_request":"yellow",
-        "on_shell_execute":"red",
+        "on_shell_execute":"purple",
         "on_anomaly_detected":"black"
     }
 
