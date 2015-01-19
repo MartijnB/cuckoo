@@ -1065,7 +1065,10 @@ class EventGraphGenerator(AbstractEventProcessor):
             "cmd":command
         }
 
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
         
         self.id_counter += 1
 
