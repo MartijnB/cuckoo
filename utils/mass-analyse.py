@@ -1427,7 +1427,7 @@ def main():
                 subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
                 subgraph.write(dot_path)
 
-                os.system("fdp -Goverlap=prism -Goverlap_scaling=2 -Gsep=+20 -Gsplines=polyline -Tpdf -o {1} {0}".format(dot_path, pdf_path))
+                os.system("fdp -Goverlap=prism -Goverlap_scaling=10 -Gsep=+30 -Gsplines -Tpdf -o {1} {0}".format(dot_path, pdf_path))
 
                 if args.graphs:
                     layout_graph = subgraph.layout("kk")
