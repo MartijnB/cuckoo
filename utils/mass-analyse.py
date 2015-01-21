@@ -1462,6 +1462,11 @@ def main():
                 dot_path = os.path.join(report_path, "report_{0}.dot".format(analyzer.name))
                 pdf_path = os.path.join(report_path, "report_{0}.pdf".format(analyzer.name))
 
+                for i in range(len(subgraph.vs)):
+                    if subgraph.vs[i]["type"] == "on_http_request":
+                        if isinstance(subgraph.vs[i]["label"], str) and len(subgraph.vs[i]["label"]) > 50:
+                            subgraph.vs[i]["label"] = subgraph.vs[i]["label"][:40] + "[...]" + subgraph.vs[i]["label"][-10:]
+
                 subgraph.vs["color"] = [color_dict[typez] for typez in subgraph.vs["type"]]
                 subgraph.write(dot_path)
 
