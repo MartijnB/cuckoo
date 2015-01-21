@@ -227,7 +227,7 @@ class Subprocess_from_tab(Detecter):
     name = "Subprocess_from_tab"
 
     def analyze_graph(self, graph):
-        return_value = {"malware_found":False,"graph":False}
+        return_value = {"malware_found":False,"graph":False,"explanation":""}
         # Get all vertices of event "on_process_new"
         new_process_events = graph.vs.select(type_eq="on_process_new")
         malicious_vertices = []
@@ -238,7 +238,15 @@ class Subprocess_from_tab(Detecter):
             if len(vertices_to_root) > 1:
                 # Oh oh, we found a process two levels deep or lower *runs around*
                 return_value["malware_found"] = True
-                return_value["explanation"] = "Found a process spawn underneath a Tab process of Internet Explorer, which is very unusual"
+
+                # Get URL from vertices_to_root
+                url = ""
+                for u in vertices_to_root: # Last URL wins, which should be the highest node in the tree
+                    print "Analyzer: vertex id = %i, type = %s" % (u, graph.vs[u]["type"])
+                    if graph.vs[u]["type"] == "on_http_request":
+                        print "Analyzer: is van 'on_http_request'"
+                        url = graph.vs[u]["data"]["url"]
+                return_value["explanation"] += "The URL '" + url + "' spawns a process."
 
                 # Create subgraph
                 all_relevant_vertices = [vertex.index, 0]
@@ -629,6 +637,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
             request_handle = parse_handle(arguments["RequestHandle"])
             if request_handle not in __network_state["handles"] \
                     or __network_state["handle_state"][request_handle]["type"] != "request":
+                return
                 raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
 
             if len(arguments["Headers"]) > 1 and "headers" not in __network_state["handle_state"][request_handle]:
@@ -640,6 +649,7 @@ class EventAggregateProcessor(AbstractEventProcessor):
 
             if request_handle not in __network_state["handles"] \
                     or __network_state["handle_state"][request_handle]["type"] != "request":
+                return
                 raise ApiStateException("RequestHandle {0} for this process does not exist!".format(request_handle))
 
             headers = {}
@@ -841,8 +851,8 @@ class EventGraphGenerator(AbstractEventProcessor):
                 elif parent["data"]["name"] == "iexplore.exe" and len(parent.graph.neighbors(parent.index, mode=IN)) > 0:
                     # It's a process spawned by a tab
                     # Hang it below the latest GET from this tab
-                    latest_get_from_tab = self.find_latest_get_from_tab(parent_id) 
-                    self.graph.add_edges([(int(latest_get_from_tab.index), int(vertex_id))])
+                    #latest_get_from_tab = self.find_latest_get_from_tab(parent_id) 
+                    self.graph.add_edges([(int(parent.index), int(vertex_id))])
                 elif parent["data"]["name"] != "iexplore.exe":
                     # Try to find a matching name in the file write events to link a process spawn to a file
                     matching_file = None
@@ -991,7 +1001,10 @@ class EventGraphGenerator(AbstractEventProcessor):
         #self.graph.vs[vertex_id]["label"] = "Deleted file " + path
         self.graph.vs[vertex_id]["data"] = {"path":path}
 
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
 
         self.id_counter += 1
 
@@ -1010,7 +1023,10 @@ class EventGraphGenerator(AbstractEventProcessor):
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
 
         self.id_counter += 1
 
@@ -1027,7 +1043,10 @@ class EventGraphGenerator(AbstractEventProcessor):
 
         # Put it under the latest HTTP Request
         # or directly under the process if there was no HTTP Request
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
 
         self.id_counter += 1
 
@@ -1042,7 +1061,10 @@ class EventGraphGenerator(AbstractEventProcessor):
         self.graph.vs[vertex_id]["label"] = str(ip) + ":" + str(port)
         self.graph.vs[vertex_id]["data"] = {"socket_id":socket_id,"ip":ip,"port":port}
 
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
 
         self.id_counter += 1
 
@@ -1083,7 +1105,10 @@ class EventGraphGenerator(AbstractEventProcessor):
         self.graph.vs[vertex_id]["label"] = None
         self.graph.vs[vertex_id]["data"] = {"category":subcategory,"function_name":function_name}
 
-        self.put_under_http_or_process(process_id, vertex_id)
+        parents = self.graph.vs.select(pid_eq=process_id).select(type_eq="on_process_new")
+        if len(parents) == 1:
+            parent = parents[0]
+            self.graph.add_edges([(int(parent.index), int(vertex_id))])
 
         self.id_counter += 1
 
@@ -1445,6 +1470,7 @@ def main():
 
     if args.graphs:
         layout_graph = graph.layout("kk")
+        graph.vs["label"] = [None for i in range(len(graph.vs))]
         plot(graph, bbox=(3000,3000), layout=layout_graph)
 
 if __name__ == "__main__":
