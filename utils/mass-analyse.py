@@ -240,13 +240,26 @@ class Subprocess_from_tab(Detecter):
                 return_value["malware_found"] = True
 
                 # Get URL from vertices_to_root
-                url = ""
+                n = ""
+                # Get the vertex which has the root node as parent
                 for u in vertices_to_root: # Last URL wins, which should be the highest node in the tree
-                    print "Analyzer: vertex id = %i, type = %s" % (u, graph.vs[u]["type"])
-                    if graph.vs[u]["type"] == "on_http_request":
-                        print "Analyzer: is van 'on_http_request'"
-                        url = graph.vs[u]["data"]["url"]
-                return_value["explanation"] += "The URL '" + url + "' spawns a process."
+                    neighbors = graph.neighbors(u, mode=IN)
+                    for neighbor in neighbors:
+                        if graph.vs[neighbor]["id"] == 0:
+                            n = u
+                            break
+
+                # Get childs of this vertex, there should be some http events
+                uid = sys.maxint
+                for neighbor in graph.neighbors(n, mode=OUT):
+                    if graph.vs[neighbor]["type"] == "on_http_request":
+                        if uid > graph.vs[neighbor]["id"]:
+                            uid = graph.vs[neighbor]["id"]
+                # Get the http event with the lowest ID
+                url = graph.vs.select(id_eq=uid)[0]
+
+
+                return_value["explanation"] += "The URL '" + url["data"]["url"] + "' spawns a process. "
 
                 # Create subgraph
                 all_relevant_vertices = [vertex.index, 0]
